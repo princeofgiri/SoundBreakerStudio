@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="27"
+        android:translateY="27">
+        <!-- Waveform bars -->
+        <path
+            android:fillColor="#FF4757"
+            android:pathData="M8,30 L8,10 Q8,6 12,6 L14,6 Q18,6 18,10 L18,30 Q18,34 14,34 L12,34 Q8,34 8,30 Z"/>
+        <path
+            android:fillColor="#3498DB"
+            android:pathData="M24,30 L24,4 Q24,0 28,0 L30,0 Q34,0 34,4 L34,30 Q34,34 30,34 L28,34 Q24,34 24,30 Z"/>
+        <path
+            android:fillColor="#2ED573"
+            android:pathData="M40,30 L40,14 Q40,10 44,10 L46,10 Q50,10 50,14 L50,30 Q50,34 46,34 L44,34 Q40,34 40,30 Z"/>
+        <path
+            android:fillColor="#FFA502"
+            android:pathData="M56,30 L56,8 Q56,4 60,4 L62,4 Q66,4 66,8 L66,30 Q66,34 62,34 L60,34 Q56,34 56,30 Z"/>
+        <path
+            android:fillColor="#A29BFE"
+            android:pathData="M72,30 L72,16 Q72,12 76,12 L78,12 Q82,12 82,16 L82,30 Q82,34 78,34 L76,34 Q72,34 72,30 Z"/>
+    </group>
+</vector>
