@@ -40,6 +40,7 @@ class AudioEngine {
         val volumes: List<Float>,
         val pans: List<Float>,
         val eq: List<Triple<Float, Float, Float>>,
+        val effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(),
         val bpm: Int = 120,
         val isClickOn: Boolean = false,
     )
@@ -48,6 +49,7 @@ class AudioEngine {
     @Volatile private var masterVolume = 0.78f
     @Volatile private var masterPan = 0.5f
     private var eqFilters: Array<Array<BiquadFilter>> = emptyArray()
+    private val effectsChain = TrackEffectsChain(SAMPLE_RATE)
     private var playbackPosition = 0
 
     var onAmplitude: ((Float) -> Unit)? = null
@@ -107,7 +109,7 @@ class AudioEngine {
         recordJob?.cancel()
     }
 
-    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false) {
+    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false) {
         if (isPlaying) stopPlayback()
 
         val minBuffer = AudioTrack.getMinBufferSize(
@@ -132,6 +134,7 @@ class AudioEngine {
             volumes = if (volumes.size == trackPcmData.size) volumes else trackPcmData.map { 1f },
             pans = if (pans.size == trackPcmData.size) pans else trackPcmData.map { 0.5f },
             eq = if (eq.size == trackPcmData.size) eq else trackPcmData.map { Triple(0f, 0f, 0f) },
+            effects = if (effects.size == trackPcmData.size) effects else trackPcmData.map { emptyList() },
             bpm = bpm,
             isClickOn = isClickOn,
         )
@@ -244,13 +247,14 @@ class AudioEngine {
         playbackPosition = position.coerceAtLeast(0)
     }
 
-    fun updatePlaybackBuffers(newBuffers: List<ShortArray>, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false) {
+    fun updatePlaybackBuffers(newBuffers: List<ShortArray>, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false) {
         val current = playbackState
         playbackState = current.copy(
             buffers = newBuffers,
             volumes = if (volumes.size == newBuffers.size) volumes else current.volumes,
             pans = if (pans.size == newBuffers.size) pans else current.pans,
             eq = if (eq.size == newBuffers.size) eq else current.eq,
+            effects = if (effects.size == newBuffers.size) effects else current.effects,
             bpm = bpm,
             isClickOn = isClickOn,
         )
@@ -316,6 +320,14 @@ class AudioEngine {
                         right = filters[0].process(right)
                         right = filters[1].process(right)
                         right = filters[2].process(right)
+                    }
+                    val state = playbackState
+                    if (state.effects.isNotEmpty() && idx < state.effects.size) {
+                        val trackFx = state.effects[idx]
+                        if (trackFx.isNotEmpty()) {
+                            left = effectsChain.processTrack(idx, left, trackFx)
+                            right = effectsChain.processTrack(idx + 10000, right, trackFx)
+                        }
                     }
                     leftSum += (left * leftGain).toLong()
                     rightSum += (right * rightGain).toLong()

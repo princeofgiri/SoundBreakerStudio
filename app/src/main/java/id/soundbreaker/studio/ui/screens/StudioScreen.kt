@@ -124,6 +124,16 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onMasterVolumeChange = { viewModel.setMasterVolume(it) },
                     onMasterPanChange = { viewModel.setMasterPan(it) },
                 )
+            } else if (activeTab == "FX") {
+                FxScreen(
+                    tracks = project.tracks,
+                    selectedTrackId = selectedTrackId,
+                    onSelectTrack = { viewModel.selectTrack(it) },
+                    onAddEffect = { trackId, type -> viewModel.addEffect(trackId, type) },
+                    onRemoveEffect = { trackId, fxId -> viewModel.removeEffect(trackId, fxId) },
+                    onToggleEffect = { trackId, fxId -> viewModel.toggleEffect(trackId, fxId) },
+                    onSetParam = { trackId, fxId, key, value -> viewModel.setEffectParam(trackId, fxId, key, value) },
+                )
             } else {
             // Track List
             Column(modifier = Modifier.width(280.dp).fillMaxHeight().background(DarkSurface)) {

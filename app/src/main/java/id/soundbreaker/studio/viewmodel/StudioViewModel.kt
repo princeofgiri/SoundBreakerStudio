@@ -168,6 +168,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return _project.value.tracks.map { it.pan }
     }
 
+    private fun getTrackEffects(): List<List<id.soundbreaker.studio.data.Effect>> {
+        return _project.value.tracks.map { it.effects }
+    }
+
     fun startPlayback() {
         val pcmList = getFilteredPcmList()
         if (pcmList.all { it.isEmpty() }) { _message.value = "Tidak ada audio"; return }
@@ -177,7 +181,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val posMs = ((_project.value.playheadPosition - 1f) * msPerBar).toLong()
         val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
         _project.value = _project.value.copy(isPlaying = true)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
 
     fun startPlaybackFromPosition(bar: Float) {
@@ -189,7 +193,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _isPlaying.value = true
         _isRecording.value = false
         _project.value = _project.value.copy(isPlaying = true, playheadPosition = bar)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
 
     fun stopPlayback() {
@@ -215,32 +219,32 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun toggleArm(trackId: Int) { updateTrack(trackId) { it.copy(isArmed = !it.isArmed) } }
     fun toggleMute(trackId: Int) {
         updateTrack(trackId) { it.copy(isMuted = !it.isMuted) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun toggleSolo(trackId: Int) {
         updateTrack(trackId) { it.copy(isSolo = !it.isSolo) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setTrackVolume(trackId: Int, volume: Float) {
         updateTrack(trackId) { it.copy(volume = volume.coerceIn(0f, 1f)) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setTrackPan(trackId: Int, pan: Float) {
         updateTrack(trackId) { it.copy(pan = pan.coerceIn(0f, 1f)) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setTrackEq(trackId: Int, low: Float, mid: Float, high: Float) {
         updateTrack(trackId) { it.copy(eqLow = low, eqMid = mid, eqHigh = high) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun toggleLoop() { _project.value = _project.value.copy(isLooping = !_project.value.isLooping) }
     fun toggleClick() {
         _project.value = _project.value.copy(isClickOn = !_project.value.isClickOn)
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setBpm(bpm: Int) {
         _project.value = _project.value.copy(bpm = bpm.coerceIn(20, 300))
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setMasterVolume(volume: Float) {
         _masterVolume.value = volume.coerceIn(0f, 1f)
@@ -249,6 +253,47 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setMasterPan(pan: Float) {
         _masterPan.value = pan.coerceIn(0f, 1f)
         audioEngine.setMasterPan(_masterPan.value)
+    }
+    fun addEffect(trackId: Int, effectType: id.soundbreaker.studio.data.EffectType) {
+        val effectId = (System.currentTimeMillis() % 100000).toInt()
+        val fx = id.soundbreaker.studio.data.Effect(
+            id = effectId, name = effectType.displayName,
+            icon = when (effectType) {
+                id.soundbreaker.studio.data.EffectType.COMPRESSOR -> "compressor"
+                id.soundbreaker.studio.data.EffectType.REVERB -> "reverb"
+                id.soundbreaker.studio.data.EffectType.DELAY -> "delay"
+                id.soundbreaker.studio.data.EffectType.CHORUS -> "chorus"
+                id.soundbreaker.studio.data.EffectType.DISTORTION -> "distortion"
+                id.soundbreaker.studio.data.EffectType.FILTER -> "filter"
+            },
+            params = effectType.defaultParams.toMutableMap()
+        )
+        updateTrack(trackId) { track ->
+            track.copy(effects = track.effects + fx)
+        }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
+    }
+    fun removeEffect(trackId: Int, effectId: Int) {
+        updateTrack(trackId) { track ->
+            track.copy(effects = track.effects.filter { it.id != effectId })
+        }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
+    }
+    fun toggleEffect(trackId: Int, effectId: Int) {
+        updateTrack(trackId) { track ->
+            track.copy(effects = track.effects.map {
+                if (it.id == effectId) it.copy(isEnabled = !it.isEnabled) else it
+            })
+        }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
+    }
+    fun setEffectParam(trackId: Int, effectId: Int, paramKey: String, value: Float) {
+        updateTrack(trackId) { track ->
+            track.copy(effects = track.effects.map {
+                if (it.id == effectId) it.copy(params = it.params + (paramKey to value)) else it
+            })
+        }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun toggleInspector() {
         _isInspectorVisible.value = !_isInspectorVisible.value

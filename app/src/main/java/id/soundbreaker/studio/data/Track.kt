@@ -49,7 +49,17 @@ data class Effect(
     val name: String,
     val icon: String,
     val isEnabled: Boolean = true,
+    val params: Map<String, Float> = emptyMap(),
 )
+
+enum class EffectType(val displayName: String, val defaultParams: Map<String, Float>) {
+    COMPRESSOR("Compressor", mapOf("threshold" to 0.5f, "ratio" to 4f)),
+    REVERB("Reverb", mapOf("amount" to 0.3f, "decay" to 0.5f)),
+    DELAY("Delay", mapOf("time" to 0.3f, "feedback" to 0.4f)),
+    CHORUS("Chorus", mapOf("depth" to 0.3f, "rate" to 0.5f)),
+    DISTORTION("Distortion", mapOf("drive" to 0.3f, "tone" to 0.5f)),
+    FILTER("Filter", mapOf("cutoff" to 0.8f, "resonance" to 0.3f)),
+}
 
 data class ProjectState(
     val name: String = "My Song 01",
