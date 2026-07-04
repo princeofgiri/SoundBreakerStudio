@@ -43,7 +43,7 @@ fun MixScreen(
             .fillMaxSize()
             .background(DarkBackground)
             .padding(horizontal = 8.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.Bottom,
     ) {
         tracks.forEachIndexed { index, track ->
