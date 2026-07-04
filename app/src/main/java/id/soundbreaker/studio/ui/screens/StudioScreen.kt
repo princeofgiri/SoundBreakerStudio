@@ -33,6 +33,8 @@ import id.soundbreaker.studio.viewmodel.StudioViewModel
 val RULER_HEIGHT = 24.dp
 val TOOLBAR_HEIGHT = 40.dp
 
+private fun formatEqDb(value: Float): String = if (value > 0) "+${value.toInt()} dB" else "${value.toInt()} dB"
+
 @Composable
 fun StudioScreen(viewModel: StudioViewModel) {
     val project by viewModel.project.collectAsState()
@@ -166,10 +168,14 @@ fun StudioScreen(viewModel: StudioViewModel) {
                 if (sel != null) {
                     InspectorPanel(
                         trackName = sel.name, trackType = sel.type.label, volume = sel.volume,
-                        pan = sel.pan, sampleRate = sel.sampleRate,
-                        eqLow = "+3 dB", eqMid = "-1 dB", eqHigh = "+2 dB",
+                        pan = sel.pan, sampleRate = sel.sampleRate, channels = sel.channels, bitDepth = sel.bitDepth,
+                        eqLow = formatEqDb(sel.eqLow), eqMid = formatEqDb(sel.eqMid), eqHigh = formatEqDb(sel.eqHigh),
+                        eqLowValue = sel.eqLow, eqMidValue = sel.eqMid, eqHighValue = sel.eqHigh,
+                        onEqChange = { low, mid, high -> viewModel.setTrackEq(sel.id, low, mid, high) },
                         effects = sel.effects.map { it.name to it.isEnabled },
                         onDelete = { deleteTrackId = sel.id; showDeleteDialog = true },
+                        onVolumeChange = { newVol -> viewModel.setTrackVolume(sel.id, newVol) },
+                        onPanChange = { newPan -> viewModel.setTrackPan(sel.id, newPan) },
                         modifier = Modifier.width(280.dp),
                     )
                 }
@@ -201,7 +207,8 @@ fun StudioScreen(viewModel: StudioViewModel) {
                 )
             }
             MiniMixerBar(tracks = project.tracks, onExport = { exportWavLauncher.launch("recording.wav") },
-                onImport = { filePickerLauncher.launch(arrayOf("audio/*")) })
+                onImport = { filePickerLauncher.launch(arrayOf("audio/*")) },
+                onTrackVolumeChange = { trackId, vol -> viewModel.setTrackVolume(trackId, vol) })
         }
     }
 
@@ -312,7 +319,7 @@ private fun PanelHeader(title: String) {
 }
 
 @Composable
-private fun MiniMixerBar(tracks: List<Track>, onExport: () -> Unit, onImport: () -> Unit) {
+private fun MiniMixerBar(tracks: List<Track>, onExport: () -> Unit, onImport: () -> Unit, onTrackVolumeChange: (Int, Float) -> Unit = { _, _ -> }) {
     Column(modifier = Modifier.width(300.dp).fillMaxHeight().background(Color(0xFF0E0E0E)).padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -326,7 +333,8 @@ private fun MiniMixerBar(tracks: List<Track>, onExport: () -> Unit, onImport: ()
             tracks.forEach { track ->
                 MiniChannelFader(label = track.name.take(3).uppercase(),
                     dbValue = "${((track.volume - 0.5f) * 20).toInt().let { if (it >= 0) "+$it" else "$it" }}",
-                    volume = track.volume, color = track.color)
+                    volume = track.volume, color = track.color,
+                    onVolumeChange = { newVol -> onTrackVolumeChange(track.id, newVol) })
                 Spacer(modifier = Modifier.width(12.dp))
             }
             Spacer(modifier = Modifier.width(12.dp))

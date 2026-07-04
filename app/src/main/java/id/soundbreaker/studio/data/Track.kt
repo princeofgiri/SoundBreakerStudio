@@ -13,6 +13,11 @@ data class Track(
     val isSolo: Boolean = false,
     val isArmed: Boolean = false,
     val sampleRate: Int = 44100,
+    val channels: Int = 2,
+    val bitDepth: Int = 16,
+    val eqLow: Float = 0f,
+    val eqMid: Float = 0f,
+    val eqHigh: Float = 0f,
     val regions: List<AudioRegion> = emptyList(),
     val effects: List<Effect> = emptyList(),
 )

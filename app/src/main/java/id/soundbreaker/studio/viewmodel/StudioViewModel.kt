@@ -127,8 +127,36 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         } else startPlayback()
     }
 
+    private fun getFilteredPcmList(): List<ShortArray> {
+        val tracks = _project.value.tracks
+        val hasSolo = tracks.any { it.isSolo }
+        return tracks.map { track ->
+            val pcm = _trackPcmData[track.id] ?: ShortArray(0)
+            if (pcm.isEmpty()) return@map pcm
+            val shouldPlay = if (hasSolo) track.isSolo else !track.isMuted
+            if (shouldPlay) pcm else ShortArray(0)
+        }
+    }
+
+    private fun getTrackVolumes(): List<Float> {
+        val tracks = _project.value.tracks
+        val hasSolo = tracks.any { it.isSolo }
+        return tracks.map { track ->
+            val shouldPlay = if (hasSolo) track.isSolo else !track.isMuted
+            if (shouldPlay) track.volume else 0f
+        }
+    }
+
+    private fun getTrackEq(): List<Triple<Float, Float, Float>> {
+        return _project.value.tracks.map { Triple(it.eqLow, it.eqMid, it.eqHigh) }
+    }
+
+    private fun getTrackPans(): List<Float> {
+        return _project.value.tracks.map { it.pan }
+    }
+
     fun startPlayback() {
-        val pcmList = _project.value.tracks.map { _trackPcmData[it.id] ?: ShortArray(0) }
+        val pcmList = getFilteredPcmList()
         if (pcmList.all { it.isEmpty() }) { _message.value = "Tidak ada audio"; return }
         _isPlaying.value = true
         _isRecording.value = false
@@ -136,11 +164,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val posMs = ((_project.value.playheadPosition - 1f) * msPerBar).toLong()
         val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
         _project.value = _project.value.copy(isPlaying = true)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame)
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq())
     }
 
     fun startPlaybackFromPosition(bar: Float) {
-        val pcmList = _project.value.tracks.map { _trackPcmData[it.id] ?: ShortArray(0) }
+        val pcmList = getFilteredPcmList()
         if (pcmList.all { it.isEmpty() }) { _message.value = "Tidak ada audio"; return }
         val msPerBar = (60_000.0 / _project.value.bpm) * 4
         val posMs = ((bar - 1f) * msPerBar).toLong()
@@ -148,7 +176,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _isPlaying.value = true
         _isRecording.value = false
         _project.value = _project.value.copy(isPlaying = true, playheadPosition = bar)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame)
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq())
     }
 
     fun stopPlayback() {
@@ -172,8 +200,26 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleRecord() { if (_isRecording.value) stopRecording() else startRecording() }
     fun toggleArm(trackId: Int) { updateTrack(trackId) { it.copy(isArmed = !it.isArmed) } }
-    fun toggleMute(trackId: Int) { updateTrack(trackId) { it.copy(isMuted = !it.isMuted) } }
-    fun toggleSolo(trackId: Int) { updateTrack(trackId) { it.copy(isSolo = !it.isSolo) } }
+    fun toggleMute(trackId: Int) {
+        updateTrack(trackId) { it.copy(isMuted = !it.isMuted) }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+    }
+    fun toggleSolo(trackId: Int) {
+        updateTrack(trackId) { it.copy(isSolo = !it.isSolo) }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+    }
+    fun setTrackVolume(trackId: Int, volume: Float) {
+        updateTrack(trackId) { it.copy(volume = volume.coerceIn(0f, 1f)) }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+    }
+    fun setTrackPan(trackId: Int, pan: Float) {
+        updateTrack(trackId) { it.copy(pan = pan.coerceIn(0f, 1f)) }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+    }
+    fun setTrackEq(trackId: Int, low: Float, mid: Float, high: Float) {
+        updateTrack(trackId) { it.copy(eqLow = low, eqMid = mid, eqHigh = high) }
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+    }
     fun toggleLoop() { _project.value = _project.value.copy(isLooping = !_project.value.isLooping) }
     fun toggleClick() { _project.value = _project.value.copy(isClickOn = !_project.value.isClickOn) }
     fun toggleInspector() {
@@ -319,7 +365,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     val fileName = getFileName(uri, context)
                     regionIdCounter++
                     updateTrack(targetId) { track ->
-                        track.copy(regions = track.regions + AudioRegion(regionIdCounter, fileName, 1f, widthBars, waveform))
+                        track.copy(
+                            channels = channels,
+                            bitDepth = AudioEngine.BITS_PER_SAMPLE,
+                            regions = track.regions + AudioRegion(regionIdCounter, fileName, 1f, widthBars, waveform)
+                        )
                     }
                     _message.value = "Imported: $fileName ($statusMsg)"
                 }

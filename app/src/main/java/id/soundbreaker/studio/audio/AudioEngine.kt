@@ -35,7 +35,15 @@ class AudioEngine {
     private val recordedBuffers = CopyOnWriteArrayList<ShortArray>()
     private var totalRecordedFrames = 0
 
-    private var playbackBuffers: List<ShortArray> = emptyList()
+    private data class PlaybackState(
+        val buffers: List<ShortArray>,
+        val volumes: List<Float>,
+        val pans: List<Float>,
+        val eq: List<Triple<Float, Float, Float>>,
+    )
+
+    @Volatile private var playbackState = PlaybackState(emptyList(), emptyList(), emptyList(), emptyList())
+    private var eqFilters: Array<Array<BiquadFilter>> = emptyArray()
     private var playbackPosition = 0
 
     var onAmplitude: ((Float) -> Unit)? = null
@@ -94,7 +102,7 @@ class AudioEngine {
         recordJob?.cancel()
     }
 
-    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int) {
+    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList()) {
         if (isPlaying) stopPlayback()
 
         val minBuffer = AudioTrack.getMinBufferSize(
@@ -114,7 +122,13 @@ class AudioEngine {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
-        playbackBuffers = trackPcmData
+        playbackState = PlaybackState(
+            buffers = trackPcmData,
+            volumes = if (volumes.size == trackPcmData.size) volumes else trackPcmData.map { 1f },
+            pans = if (pans.size == trackPcmData.size) pans else trackPcmData.map { 0.5f },
+            eq = if (eq.size == trackPcmData.size) eq else trackPcmData.map { Triple(0f, 0f, 0f) },
+        )
+        initEqFilters()
         playbackPosition = startFrame.coerceAtLeast(0)
         isPlaying = true
 
@@ -129,8 +143,9 @@ class AudioEngine {
                     kotlinx.coroutines.delay(50)
                     continue
                 }
+                val state = playbackState
                 val framesToRead = minOf(framesPerChunk, totalFrames - playbackPosition)
-                val stereoOutput = mixMultipleTracks(playbackBuffers, playbackPosition, framesToRead)
+                val stereoOutput = mixMultipleTracks(state.buffers, playbackPosition, framesToRead, state.volumes, state.pans)
 
                 val written = audioTrack?.write(stereoOutput, 0, stereoOutput.size) ?: -1
                 if (written > 0) {
@@ -141,8 +156,10 @@ class AudioEngine {
                 }
             }
 
-            audioTrack?.stop()
-            audioTrack?.release()
+            try {
+                audioTrack?.stop()
+                audioTrack?.release()
+            } catch (_: Exception) {}
             audioTrack = null
             isPlaying = false
             isPaused = false
@@ -161,8 +178,10 @@ class AudioEngine {
     fun stopPlayback() {
         isPlaying = false
         playJob?.cancel()
-        audioTrack?.stop()
-        audioTrack?.release()
+        try {
+            audioTrack?.stop()
+            audioTrack?.release()
+        } catch (_: Exception) {}
         audioTrack = null
     }
 
@@ -178,26 +197,71 @@ class AudioEngine {
         playbackPosition = position.coerceAtLeast(0)
     }
 
+    fun updatePlaybackBuffers(newBuffers: List<ShortArray>, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList()) {
+        val current = playbackState
+        playbackState = current.copy(
+            buffers = newBuffers,
+            volumes = if (volumes.size == newBuffers.size) volumes else current.volumes,
+            pans = if (pans.size == newBuffers.size) pans else current.pans,
+            eq = if (eq.size == newBuffers.size) eq else current.eq,
+        )
+        if (eq.size == newBuffers.size) {
+            initEqFilters()
+        }
+    }
+
+    private fun initEqFilters() {
+        val eq = playbackState.eq
+        eqFilters = Array(eq.size) { trackIdx ->
+            val (low, mid, high) = eq.getOrElse(trackIdx) { Triple(0f, 0f, 0f) }
+            val sr = SAMPLE_RATE.toFloat()
+            arrayOf(
+                BiquadFilter().apply { configureLowShelf(200f, low, 0.707f, sr) },
+                BiquadFilter().apply { configurePeaking(1000f, mid, 1.0f, sr) },
+                BiquadFilter().apply { configureHighShelf(4000f, high, 0.707f, sr) },
+            )
+        }
+    }
+
     fun isRecording() = isRecording
     fun isPlaying() = isPlaying
 
     private fun mixMultipleTracks(
         tracks: List<ShortArray>,
         startFrame: Int,
-        maxFrames: Int
+        maxFrames: Int,
+        volumes: List<Float> = emptyList(),
+        pans: List<Float> = emptyList(),
     ): ShortArray {
-        // tracks contain stereo interleaved data: L0 R0 L1 R1...
-        // Output is also stereo interleaved
         val stereoOutput = ShortArray(maxFrames * 2)
+        val hasEq = eqFilters.isNotEmpty()
 
         for (i in 0 until maxFrames) {
             var leftSum = 0L
             var rightSum = 0L
-            for (track in tracks) {
+            for ((idx, track) in tracks.withIndex()) {
+                val vol = if (idx < volumes.size) volumes[idx] else 1f
+                if (vol <= 0.001f) continue
+                val pan = if (idx < pans.size) pans[idx] else 0.5f
+                // Equal power pan: pan 0=left, 0.5=center, 1=right
+                val panAngle = pan * Math.PI.toFloat() / 2f
+                val leftGain = Math.cos(panAngle.toDouble()).toFloat()
+                val rightGain = Math.sin(panAngle.toDouble()).toFloat()
                 val sampleIdx = (startFrame + i) * 2
                 if (sampleIdx + 1 < track.size) {
-                    leftSum += track[sampleIdx].toLong()
-                    rightSum += track[sampleIdx + 1].toLong()
+                    var left = track[sampleIdx].toFloat() * vol
+                    var right = track[sampleIdx + 1].toFloat() * vol
+                    if (hasEq && idx < eqFilters.size) {
+                        val filters = eqFilters[idx]
+                        left = filters[0].process(left)
+                        left = filters[1].process(left)
+                        left = filters[2].process(left)
+                        right = filters[0].process(right)
+                        right = filters[1].process(right)
+                        right = filters[2].process(right)
+                    }
+                    leftSum += (left * leftGain).toLong()
+                    rightSum += (right * rightGain).toLong()
                 }
             }
             stereoOutput[i * 2] = leftSum.coerceIn(Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong()).toShort()
@@ -714,4 +778,73 @@ class AudioEngine {
         stopPlayback()
         scope.cancel()
     }
+}
+
+class BiquadFilter {
+    private var b0 = 0f; private var b1 = 0f; private var b2 = 0f
+    private var a1 = 0f; private var a2 = 0f
+    private var x1 = 0f; private var x2 = 0f; private var y1 = 0f; private var y2 = 0f
+
+    fun configurePeaking(f0: Float, gain: Float, q: Float, sampleRate: Float) {
+        val A = Math.pow(10.0, gain / 40.0).toFloat()
+        val w0 = (2.0 * Math.PI * f0 / sampleRate).toFloat()
+        val sinW0 = Math.sin(w0.toDouble()).toFloat()
+        val cosW0 = Math.cos(w0.toDouble()).toFloat()
+        val alpha = sinW0 / (2f * q)
+        val b0r = 1f + alpha * A
+        val b1r = -2f * cosW0
+        val b2r = 1f - alpha * A
+        val a0r = 1f + alpha / A
+        val a1r = -2f * cosW0
+        val a2r = 1f - alpha / A
+        b0 = b0r / a0r; b1 = b1r / a0r; b2 = b2r / a0r
+        a1 = a1r / a0r; a2 = a2r / a0r
+    }
+
+    fun configureLowShelf(f0: Float, gain: Float, q: Float, sampleRate: Float) {
+        val A = Math.pow(10.0, gain / 40.0).toFloat()
+        val w0 = (2.0 * Math.PI * f0 / sampleRate).toFloat()
+        val sinW0 = Math.sin(w0.toDouble()).toFloat()
+        val cosW0 = Math.cos(w0.toDouble()).toFloat()
+        val sqrtA2alpha = Math.sqrt(2.0 * A * calcAlpha(f0, q, sampleRate)).toFloat()
+        val ap = A + 1f; val am = A - 1f
+        val b0r = A * (ap - am * cosW0 + sqrtA2alpha)
+        val b1r = 2f * A * (am - ap * cosW0)
+        val b2r = A * (ap - am * cosW0 - sqrtA2alpha)
+        val a0r = ap + am * cosW0 + sqrtA2alpha
+        val a1r = -2f * (am + ap * cosW0)
+        val a2r = ap + am * cosW0 - sqrtA2alpha
+        b0 = b0r / a0r; b1 = b1r / a0r; b2 = b2r / a0r
+        a1 = a1r / a0r; a2 = a2r / a0r
+    }
+
+    fun configureHighShelf(f0: Float, gain: Float, q: Float, sampleRate: Float) {
+        val A = Math.pow(10.0, gain / 40.0).toFloat()
+        val w0 = (2.0 * Math.PI * f0 / sampleRate).toFloat()
+        val sinW0 = Math.sin(w0.toDouble()).toFloat()
+        val cosW0 = Math.cos(w0.toDouble()).toFloat()
+        val sqrtA2alpha = Math.sqrt(2.0 * A * calcAlpha(f0, q, sampleRate)).toFloat()
+        val ap = A + 1f; val am = A - 1f
+        val b0r = A * (ap + am * cosW0 + sqrtA2alpha)
+        val b1r = -2f * A * (am + ap * cosW0)
+        val b2r = A * (ap + am * cosW0 - sqrtA2alpha)
+        val a0r = ap - am * cosW0 + sqrtA2alpha
+        val a1r = 2f * (am - ap * cosW0)
+        val a2r = ap - am * cosW0 - sqrtA2alpha
+        b0 = b0r / a0r; b1 = b1r / a0r; b2 = b2r / a0r
+        a1 = a1r / a0r; a2 = a2r / a0r
+    }
+
+    private fun calcAlpha(f0: Float, q: Float, sampleRate: Float): Float {
+        val w0 = (2.0 * Math.PI * f0 / sampleRate).toFloat()
+        return Math.sin(w0.toDouble()).toFloat() / (2f * q)
+    }
+
+    fun process(sample: Float): Float {
+        val output = b0 * sample + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+        x2 = x1; x1 = sample; y2 = y1; y1 = output
+        return output
+    }
+
+    fun reset() { x1 = 0f; x2 = 0f; y1 = 0f; y2 = 0f }
 }
