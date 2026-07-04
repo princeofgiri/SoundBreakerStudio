@@ -87,10 +87,11 @@ class DistortionProcessor {
     private var lastOut = 0f
 
     fun process(sample: Float): Float {
+        val normalized = sample / Short.MAX_VALUE.toFloat()
         val gain = 1f + drive * 19f
-        val driven = tanh(sample * gain)
+        val driven = tanh(normalized * gain)
         lastOut = lastOut * (1f - tone) + driven * tone
-        return lastOut
+        return (lastOut * Short.MAX_VALUE).toInt().toShort().toFloat()
     }
 }
 
