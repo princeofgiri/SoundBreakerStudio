@@ -34,6 +34,7 @@ fun TrackListItem(
     onRecordClick: () -> Unit,
     onSelect: () -> Unit = {},
     onDoubleClick: () -> Unit = {},
+    onDelete: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(

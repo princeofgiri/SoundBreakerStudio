@@ -29,6 +29,7 @@ fun InspectorPanel(
     eqMid: String,
     eqHigh: String,
     effects: List<Pair<String, Boolean>>,
+    onDelete: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -72,6 +73,29 @@ fun InspectorPanel(
             }
             EffectSlot("+ Add Effect", false, isAddButton = true)
         }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Delete Track Button
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(AccentRed.copy(alpha = 0.15f))
+                .clickable { onDelete() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Delete Track",
+                color = AccentRed,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(vertical = 10.dp),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 

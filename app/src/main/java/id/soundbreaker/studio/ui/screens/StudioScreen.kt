@@ -48,6 +48,8 @@ fun StudioScreen(viewModel: StudioViewModel) {
 
     var renamingTrackId by remember { mutableStateOf<Int?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var deleteTrackId by remember { mutableStateOf<Int?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var saveNameText by remember { mutableStateOf(project.name) }
     val verticalScrollState = rememberScrollState()
@@ -55,15 +57,21 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val barWidth = 40.dp
     val barWidthPx = with(density) { barWidth.toPx() }
 
-    // Auto-scroll to follow playhead
+    // Auto-scroll to follow playhead (always, including navigation)
     LaunchedEffect(project.playheadPosition) {
-        if (project.isPlaying || project.isRecording) {
-            val playheadPx = (project.playheadPosition - 1f) * barWidthPx
-            val scrollMax = horizontalScrollState.maxValue.toFloat()
-            val target = (playheadPx - barWidthPx * 10).coerceIn(0f, scrollMax)
-            if (kotlin.math.abs(horizontalScrollState.value - target) > barWidthPx * 2) {
-                horizontalScrollState.animateScrollTo(target.toInt())
-            }
+        val playheadPx = (project.playheadPosition - 1f) * barWidthPx
+        val scrollMax = horizontalScrollState.maxValue.toFloat()
+        val scrollOffset = horizontalScrollState.value.toFloat()
+
+        // Near right edge or past visible area: scroll to center playhead
+        if (playheadPx > scrollOffset + barWidthPx * 20) {
+            val target = (playheadPx - barWidthPx * 5).coerceIn(0f, scrollMax)
+            horizontalScrollState.animateScrollTo(target.toInt())
+        }
+        // Near left edge
+        if (playheadPx < scrollOffset + barWidthPx && scrollOffset > 0f) {
+            val target = (playheadPx - barWidthPx * 2).coerceIn(0f, scrollMax)
+            horizontalScrollState.animateScrollTo(target.toInt())
         }
     }
 
@@ -108,6 +116,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                                 onRecordClick = { viewModel.toggleArm(track.id) },
                                 onSelect = { viewModel.selectTrack(track.id) },
                                 onDoubleClick = { renameText = track.name; renamingTrackId = track.id },
+                                onDelete = { deleteTrackId = track.id; showDeleteDialog = true },
                                 modifier = Modifier,
                             )
                         }
@@ -160,6 +169,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                         pan = sel.pan, sampleRate = sel.sampleRate,
                         eqLow = "+3 dB", eqMid = "-1 dB", eqHigh = "+2 dB",
                         effects = sel.effects.map { it.name to it.isEnabled },
+                        onDelete = { deleteTrackId = sel.id; showDeleteDialog = true },
                         modifier = Modifier.width(280.dp),
                     )
                 }
@@ -233,6 +243,19 @@ fun StudioScreen(viewModel: StudioViewModel) {
             dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("Cancel", color = TextMuted) } },
         )
     }
+
+    // Delete Track Dialog
+    if (showDeleteDialog && deleteTrackId != null) {
+        val trackName = project.tracks.find { it.id == deleteTrackId }?.name ?: ""
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false; deleteTrackId = null },
+            containerColor = Color(0xFF1A1A1A), titleContentColor = TextPrimary,
+            title = { Text("Hapus Track") },
+            text = { Text("Hapus track \"$trackName\" dan semua audionya?", color = TextSecondary) },
+            confirmButton = { TextButton(onClick = { viewModel.removeTrack(deleteTrackId!!); showDeleteDialog = false; deleteTrackId = null }) { Text("Hapus", color = AccentRed) } },
+            dismissButton = { TextButton(onClick = { showDeleteDialog = false; deleteTrackId = null }) { Text("Batal", color = TextMuted) } },
+        )
+    }
 }
 
 @Composable
@@ -247,11 +270,11 @@ private fun TransportBar(
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             TransportButton("⏮", false, TextSecondary) { onGoToStart() }
-            TransportButton("⏪", false, TextSecondary) { onRewind() }
+            TransportButton("◀◀", false, TextSecondary) { onRewind() }
             TransportButton(if (isPlaying) "❚❚" else "▶", isPlaying, AccentGreen, 52.dp) { onPlay() }
             TransportButton("●", isRecording, TransportRed, 52.dp) { onRecord() }
             TransportButton("■", false, TextSecondary, 52.dp) { onStop() }
-            TransportButton("⏩", false, TextSecondary) { onFastForward() }
+            TransportButton("▶▶", false, TextSecondary) { onFastForward() }
             TransportButton("⏭", false, TextSecondary) { onGoToEnd() }
         }
         Spacer(modifier = Modifier.height(10.dp))
