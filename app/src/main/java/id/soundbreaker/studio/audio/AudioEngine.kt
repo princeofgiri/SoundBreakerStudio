@@ -40,9 +40,13 @@ class AudioEngine {
         val volumes: List<Float>,
         val pans: List<Float>,
         val eq: List<Triple<Float, Float, Float>>,
+        val bpm: Int = 120,
+        val isClickOn: Boolean = false,
     )
 
     @Volatile private var playbackState = PlaybackState(emptyList(), emptyList(), emptyList(), emptyList())
+    @Volatile private var masterVolume = 0.78f
+    @Volatile private var masterPan = 0.5f
     private var eqFilters: Array<Array<BiquadFilter>> = emptyArray()
     private var playbackPosition = 0
 
@@ -50,6 +54,7 @@ class AudioEngine {
     var onRecordComplete: ((File) -> Unit)? = null
     var onPlaybackPosition: ((Int, Int) -> Unit)? = null
     var onPlaybackFinished: (() -> Unit)? = null
+    var onTrackAmplitudes: ((List<Float>) -> Unit)? = null
 
     fun startRecording(outputFile: File) {
         if (isRecording) return
@@ -102,7 +107,7 @@ class AudioEngine {
         recordJob?.cancel()
     }
 
-    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList()) {
+    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false) {
         if (isPlaying) stopPlayback()
 
         val minBuffer = AudioTrack.getMinBufferSize(
@@ -127,6 +132,8 @@ class AudioEngine {
             volumes = if (volumes.size == trackPcmData.size) volumes else trackPcmData.map { 1f },
             pans = if (pans.size == trackPcmData.size) pans else trackPcmData.map { 0.5f },
             eq = if (eq.size == trackPcmData.size) eq else trackPcmData.map { Triple(0f, 0f, 0f) },
+            bpm = bpm,
+            isClickOn = isClickOn,
         )
         initEqFilters()
         playbackPosition = startFrame.coerceAtLeast(0)
@@ -146,6 +153,46 @@ class AudioEngine {
                 val state = playbackState
                 val framesToRead = minOf(framesPerChunk, totalFrames - playbackPosition)
                 val stereoOutput = mixMultipleTracks(state.buffers, playbackPosition, framesToRead, state.volumes, state.pans)
+
+                // Calculate per-track amplitude for level meters
+                if (onTrackAmplitudes != null) {
+                    val amps = FloatArray(state.buffers.size) { idx ->
+                        val buf = state.buffers[idx]
+                        val vol = if (idx < state.volumes.size) state.volumes[idx] else 1f
+                        if (vol <= 0.001f || buf.isEmpty()) 0f
+                        else {
+                            var max = 0f
+                            val checkFrames = minOf(framesToRead, 256)
+                            for (f in 0 until checkFrames) {
+                                val si = (playbackPosition + f) * 2
+                                if (si + 1 < buf.size) {
+                                    val l = Math.abs(buf[si].toInt()) / Short.MAX_VALUE.toFloat()
+                                    val r = Math.abs(buf[si + 1].toInt()) / Short.MAX_VALUE.toFloat()
+                                    val peak = maxOf(l, r) * vol
+                                    if (peak > max) max = peak
+                                }
+                            }
+                            max
+                        }
+                    }
+                    onTrackAmplitudes?.invoke(amps.toList())
+                }
+
+                if (state.isClickOn && state.bpm > 0) {
+                    mixClickTrack(stereoOutput, framesToRead, playbackPosition, state.bpm)
+                }
+
+                // Apply master volume and pan
+                val mv = masterVolume
+                val mp = masterPan
+                val mpLeft = kotlin.math.cos(mp.toDouble() * Math.PI / 2.0).toFloat()
+                val mpRight = kotlin.math.sin(mp.toDouble() * Math.PI / 2.0).toFloat()
+                for (j in 0 until stereoOutput.size step 2) {
+                    val left = (stereoOutput[j].toFloat() * mv * mpLeft).toInt().toShort()
+                    val right = (stereoOutput[j + 1].toFloat() * mv * mpRight).toInt().toShort()
+                    stereoOutput[j] = left
+                    stereoOutput[j + 1] = right
+                }
 
                 val written = audioTrack?.write(stereoOutput, 0, stereoOutput.size) ?: -1
                 if (written > 0) {
@@ -197,13 +244,15 @@ class AudioEngine {
         playbackPosition = position.coerceAtLeast(0)
     }
 
-    fun updatePlaybackBuffers(newBuffers: List<ShortArray>, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList()) {
+    fun updatePlaybackBuffers(newBuffers: List<ShortArray>, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false) {
         val current = playbackState
         playbackState = current.copy(
             buffers = newBuffers,
             volumes = if (volumes.size == newBuffers.size) volumes else current.volumes,
             pans = if (pans.size == newBuffers.size) pans else current.pans,
             eq = if (eq.size == newBuffers.size) eq else current.eq,
+            bpm = bpm,
+            isClickOn = isClickOn,
         )
         if (eq.size == newBuffers.size) {
             initEqFilters()
@@ -225,6 +274,14 @@ class AudioEngine {
 
     fun isRecording() = isRecording
     fun isPlaying() = isPlaying
+
+    fun setMasterVolume(volume: Float) {
+        masterVolume = volume
+    }
+
+    fun setMasterPan(pan: Float) {
+        masterPan = pan
+    }
 
     private fun mixMultipleTracks(
         tracks: List<ShortArray>,
@@ -770,6 +827,31 @@ class AudioEngine {
                 }
             }
             max
+        }
+    }
+
+    private fun mixClickTrack(output: ShortArray, frames: Int, startFrame: Int, bpm: Int) {
+        val framesPerBeat = (SAMPLE_RATE.toLong() * 60 / bpm).toInt()
+        val clickDuration = (SAMPLE_RATE * 0.005).toInt().coerceAtLeast(1) // 5ms click
+        val clickFreqDown = 1000f
+        val clickFreqUp = 800f
+
+        for (i in 0 until frames) {
+            val framePos = startFrame + i
+            val posInBeat = framePos % framesPerBeat
+            if (posInBeat < clickDuration) {
+                val freq = if (framePos / framesPerBeat % 4 == 0) clickFreqDown else clickFreqUp
+                val progress = posInBeat.toFloat() / clickDuration
+                val envelope = (1f - progress) * 0.5f
+                val sample = (Math.sin(2.0 * Math.PI * freq * posInBeat / SAMPLE_RATE) * Short.MAX_VALUE * envelope).toInt().toShort()
+                val idx = i * 2
+                if (idx + 1 < output.size) {
+                    val left = output[idx].toLong() + sample.toLong()
+                    val right = output[idx + 1].toLong() + sample.toLong()
+                    output[idx] = left.coerceIn(Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong()).toShort()
+                    output[idx + 1] = right.coerceIn(Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong()).toShort()
+                }
+            }
         }
     }
 

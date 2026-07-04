@@ -1,12 +1,12 @@
 package id.soundbreaker.studio.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +27,7 @@ fun MiniChannelFader(
     onVolumeChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val currentOnVolumeChange = rememberUpdatedState(onVolumeChange)
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -45,15 +46,14 @@ fun MiniChannelFader(
                 .height(80.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF1A1A1A))
-                .pointerInput(isMaster) {
-                    if (isMaster) return@pointerInput
+                .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent()
                             for (change in event.changes) {
                                 if (change.pressed || change.previousPressed) {
                                     val vol = (1f - change.position.y / size.height).coerceIn(0f, 1f)
-                                    onVolumeChange(vol)
+                                    currentOnVolumeChange.value(vol)
                                 }
                             }
                         }

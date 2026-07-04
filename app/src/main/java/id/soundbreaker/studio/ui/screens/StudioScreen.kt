@@ -18,7 +18,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +47,9 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val message by viewModel.message.collectAsState()
     val selectedRegionId by viewModel.selectedRegionId.collectAsState()
     val isInspectorVisible by viewModel.isInspectorVisible.collectAsState()
+    val masterVolume by viewModel.masterVolume.collectAsState()
+    val masterPan by viewModel.masterPan.collectAsState()
+    val trackAmplitudes by viewModel.trackAmplitudes.collectAsState()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -54,6 +59,8 @@ fun StudioScreen(viewModel: StudioViewModel) {
     var deleteTrackId by remember { mutableStateOf<Int?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var saveNameText by remember { mutableStateOf(project.name) }
+    var showBpmDialog by remember { mutableStateOf(false) }
+    var bpmText by remember { mutableStateOf(project.bpm.toString()) }
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
     val barWidth = 40.dp
@@ -102,6 +109,22 @@ fun StudioScreen(viewModel: StudioViewModel) {
         )
 
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (activeTab == "Mix") {
+                MixScreen(
+                    tracks = project.tracks,
+                    selectedTrackId = selectedTrackId,
+                    masterVolume = masterVolume,
+                    masterPan = masterPan,
+                    trackAmplitudes = trackAmplitudes,
+                    onSelectTrack = { viewModel.selectTrack(it) },
+                    onMuteToggle = { viewModel.toggleMute(it) },
+                    onSoloToggle = { viewModel.toggleSolo(it) },
+                    onVolumeChange = { id, vol -> viewModel.setTrackVolume(id, vol) },
+                    onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
+                    onMasterVolumeChange = { viewModel.setMasterVolume(it) },
+                    onMasterPanChange = { viewModel.setMasterPan(it) },
+                )
+            } else {
             // Track List
             Column(modifier = Modifier.width(280.dp).fillMaxHeight().background(DarkSurface)) {
                 PanelHeader("Tracks")
@@ -180,6 +203,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     )
                 }
             }
+            }
         }
 
         // Transport
@@ -204,11 +228,18 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onGoToStart = { viewModel.goToStart() }, onGoToEnd = { viewModel.goToEnd() },
                     onRewind = { viewModel.rewind() }, onFastForward = { viewModel.fastForward() },
                     onLoopToggle = { viewModel.toggleLoop() }, onClickToggle = { viewModel.toggleClick() },
+                    onBpmClick = { showBpmDialog = true },
                 )
             }
-            MiniMixerBar(tracks = project.tracks, onExport = { exportWavLauncher.launch("recording.wav") },
-                onImport = { filePickerLauncher.launch(arrayOf("audio/*")) },
-                onTrackVolumeChange = { trackId, vol -> viewModel.setTrackVolume(trackId, vol) })
+            if (activeTab != "Mix") {
+                MiniMixerBar(tracks = project.tracks, onExport = { exportWavLauncher.launch("recording.wav") },
+                    onImport = { filePickerLauncher.launch(arrayOf("audio/*")) },
+                    onTrackVolumeChange = { trackId, vol -> viewModel.setTrackVolume(trackId, vol) },
+                    masterVolume = masterVolume,
+                    onMasterVolumeChange = { vol -> viewModel.setMasterVolume(vol) },
+                    masterPan = masterPan,
+                    onMasterPanChange = { pan -> viewModel.setMasterPan(pan) })
+            }
         }
     }
 
@@ -263,6 +294,24 @@ fun StudioScreen(viewModel: StudioViewModel) {
             dismissButton = { TextButton(onClick = { showDeleteDialog = false; deleteTrackId = null }) { Text("Batal", color = TextMuted) } },
         )
     }
+
+    // BPM Dialog
+    if (showBpmDialog) {
+        AlertDialog(
+            onDismissRequest = { showBpmDialog = false },
+            containerColor = Color(0xFF1A1A1A), titleContentColor = TextPrimary,
+            title = { Text("Set BPM") },
+            text = {
+                OutlinedTextField(
+                    value = bpmText, onValueChange = { bpmText = it.filter { c -> c.isDigit() } },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentOrange, unfocusedBorderColor = DarkBorderLight, cursorColor = AccentOrange),
+                )
+            },
+            confirmButton = { TextButton(onClick = { val b = bpmText.toIntOrNull() ?: 120; viewModel.setBpm(b); showBpmDialog = false }) { Text("OK", color = AccentOrange) } },
+            dismissButton = { TextButton(onClick = { showBpmDialog = false }) { Text("Cancel", color = TextMuted) } },
+        )
+    }
 }
 
 @Composable
@@ -273,6 +322,7 @@ private fun TransportBar(
     onGoToStart: () -> Unit, onGoToEnd: () -> Unit,
     onRewind: () -> Unit, onFastForward: () -> Unit,
     onLoopToggle: () -> Unit, onClickToggle: () -> Unit,
+    onBpmClick: () -> Unit = {},
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -286,7 +336,7 @@ private fun TransportBar(
         }
         Spacer(modifier = Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Text("BPM", color = TextMuted, fontSize = 12.sp); Text("$bpm", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.clickable { onBpmClick() }) { Text("BPM", color = TextMuted, fontSize = 12.sp); Text("$bpm", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Text("Time Sig", color = TextMuted, fontSize = 12.sp); Text(timeSignature, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { MiniToggle(isLooping, AccentGreen, onLoopToggle); Text("Loop", color = TextMuted, fontSize = 12.sp) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text("Click", color = TextMuted, fontSize = 12.sp); MiniToggle(isClickOn, AccentOrange, onClickToggle) }
@@ -319,8 +369,8 @@ private fun PanelHeader(title: String) {
 }
 
 @Composable
-private fun MiniMixerBar(tracks: List<Track>, onExport: () -> Unit, onImport: () -> Unit, onTrackVolumeChange: (Int, Float) -> Unit = { _, _ -> }) {
-    Column(modifier = Modifier.width(300.dp).fillMaxHeight().background(Color(0xFF0E0E0E)).padding(horizontal = 12.dp, vertical = 8.dp),
+private fun MiniMixerBar(tracks: List<Track>, onExport: () -> Unit, onImport: () -> Unit, onTrackVolumeChange: (Int, Float) -> Unit = { _, _ -> }, masterVolume: Float = 0.78f, onMasterVolumeChange: (Float) -> Unit = {}, masterPan: Float = 0.5f, onMasterPanChange: (Float) -> Unit = {}) {
+    Column(modifier = Modifier.width(280.dp).fillMaxHeight().background(Color(0xFF0E0E0E)).padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Mixer", color = TextMuted, fontSize = 10.sp)
@@ -335,10 +385,71 @@ private fun MiniMixerBar(tracks: List<Track>, onExport: () -> Unit, onImport: ()
                     dbValue = "${((track.volume - 0.5f) * 20).toInt().let { if (it >= 0) "+$it" else "$it" }}",
                     volume = track.volume, color = track.color,
                     onVolumeChange = { newVol -> onTrackVolumeChange(track.id, newVol) })
-                Spacer(modifier = Modifier.width(12.dp))
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            MiniChannelFader(label = "MST", dbValue = "0.0", volume = 0.78f, color = AccentRed, isMaster = true)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                MiniChannelFader(label = "MST", dbValue = "${((masterVolume - 0.5f) * 20).toInt().let { if (it >= 0) "+$it" else "$it" }}", volume = masterVolume, color = AccentRed, onVolumeChange = onMasterVolumeChange)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                MiniMixerPan(pan = masterPan, onPanChange = onMasterPanChange)
+            }
         }
+    }
+}
+
+@Composable
+private fun MiniMixerPan(pan: Float, onPanChange: (Float) -> Unit) {
+    val currentOnPanChange = rememberUpdatedState(onPanChange)
+    val faderHeight = 80.dp
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("PAN", color = TextMuted, fontSize = 8.sp)
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .width(24.dp)
+                .height(faderHeight)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF1A1A1A))
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            for (change in event.changes) {
+                                if (change.pressed || change.previousPressed) {
+                                    val fraction = (1f - change.position.y / size.height).coerceIn(0f, 1f)
+                                    currentOnPanChange.value(fraction)
+                                }
+                            }
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            // Center tick mark (orange)
+            Box(
+                modifier = Modifier
+                    .width(16.dp)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(AccentOrange)
+            )
+            // Thumb
+            val density = LocalDensity.current
+            val thumbOffsetPx = (0.5f - pan) * with(density) { faderHeight.toPx() }
+            val thumbOffset = with(density) { thumbOffsetPx.toDp() }
+            Box(
+                modifier = Modifier
+                    .offset(y = thumbOffset)
+                    .width(18.dp)
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFEEEEEE))
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(when {
+            pan < 0.45f -> "L${((0.5f - pan) * 200).toInt()}"
+            pan > 0.55f -> "R${((pan - 0.5f) * 200).toInt()}"
+            else -> "C"
+        }, color = TextMuted, fontSize = 8.sp)
     }
 }

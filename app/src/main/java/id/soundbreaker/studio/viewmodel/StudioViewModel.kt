@@ -36,6 +36,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val _amplitude = MutableStateFlow(0f)
     val amplitude: StateFlow<Float> = _amplitude.asStateFlow()
 
+    private val _masterVolume = MutableStateFlow(0.78f)
+    val masterVolume: StateFlow<Float> = _masterVolume.asStateFlow()
+
+    private val _masterPan = MutableStateFlow(0.5f)
+    val masterPan: StateFlow<Float> = _masterPan.asStateFlow()
+
+    private val _trackAmplitudes = MutableStateFlow<List<Float>>(emptyList())
+    val trackAmplitudes: StateFlow<List<Float>> = _trackAmplitudes.asStateFlow()
+
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
@@ -72,6 +81,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _isPlaying.value = false
             _isPaused.value = false
             _project.value = _project.value.copy(isPlaying = false, playheadPosition = 1f)
+            _trackAmplitudes.value = emptyList()
+        }
+        audioEngine.onTrackAmplitudes = { amps ->
+            _trackAmplitudes.value = amps
         }
     }
 
@@ -164,7 +177,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val posMs = ((_project.value.playheadPosition - 1f) * msPerBar).toLong()
         val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
         _project.value = _project.value.copy(isPlaying = true)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq())
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
     }
 
     fun startPlaybackFromPosition(bar: Float) {
@@ -176,7 +189,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _isPlaying.value = true
         _isRecording.value = false
         _project.value = _project.value.copy(isPlaying = true, playheadPosition = bar)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq())
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
     }
 
     fun stopPlayback() {
@@ -202,26 +215,41 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun toggleArm(trackId: Int) { updateTrack(trackId) { it.copy(isArmed = !it.isArmed) } }
     fun toggleMute(trackId: Int) {
         updateTrack(trackId) { it.copy(isMuted = !it.isMuted) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
     }
     fun toggleSolo(trackId: Int) {
         updateTrack(trackId) { it.copy(isSolo = !it.isSolo) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setTrackVolume(trackId: Int, volume: Float) {
         updateTrack(trackId) { it.copy(volume = volume.coerceIn(0f, 1f)) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setTrackPan(trackId: Int, pan: Float) {
         updateTrack(trackId) { it.copy(pan = pan.coerceIn(0f, 1f)) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setTrackEq(trackId: Int, low: Float, mid: Float, high: Float) {
         updateTrack(trackId) { it.copy(eqLow = low, eqMid = mid, eqHigh = high) }
-        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq())
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
     }
     fun toggleLoop() { _project.value = _project.value.copy(isLooping = !_project.value.isLooping) }
-    fun toggleClick() { _project.value = _project.value.copy(isClickOn = !_project.value.isClickOn) }
+    fun toggleClick() {
+        _project.value = _project.value.copy(isClickOn = !_project.value.isClickOn)
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+    }
+    fun setBpm(bpm: Int) {
+        _project.value = _project.value.copy(bpm = bpm.coerceIn(20, 300))
+        if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), _project.value.bpm, _project.value.isClickOn)
+    }
+    fun setMasterVolume(volume: Float) {
+        _masterVolume.value = volume.coerceIn(0f, 1f)
+        audioEngine.setMasterVolume(_masterVolume.value)
+    }
+    fun setMasterPan(pan: Float) {
+        _masterPan.value = pan.coerceIn(0f, 1f)
+        audioEngine.setMasterPan(_masterPan.value)
+    }
     fun toggleInspector() {
         _isInspectorVisible.value = !_isInspectorVisible.value
     }
