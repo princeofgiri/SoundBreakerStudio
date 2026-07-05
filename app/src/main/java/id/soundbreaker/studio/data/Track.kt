@@ -18,6 +18,7 @@ data class Track(
     val eqLow: Float = 0f,
     val eqMid: Float = 0f,
     val eqHigh: Float = 0f,
+    val inputSource: String = "Mic",
     val regions: List<AudioRegion> = emptyList(),
     val effects: List<Effect> = emptyList(),
 )

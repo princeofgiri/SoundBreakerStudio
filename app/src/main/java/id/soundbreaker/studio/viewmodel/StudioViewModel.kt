@@ -45,6 +45,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val _trackAmplitudes = MutableStateFlow<List<Float>>(emptyList())
     val trackAmplitudes: StateFlow<List<Float>> = _trackAmplitudes.asStateFlow()
 
+    private val _availableInputs = MutableStateFlow<List<String>>(listOf("Mic"))
+    val availableInputs: StateFlow<List<String>> = _availableInputs.asStateFlow()
+
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
@@ -86,6 +89,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         audioEngine.onTrackAmplitudes = { amps ->
             _trackAmplitudes.value = amps
         }
+        refreshAvailableInputs()
     }
 
     fun hasRecordPermission(): Boolean {
@@ -232,6 +236,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setTrackPan(trackId: Int, pan: Float) {
         updateTrack(trackId) { it.copy(pan = pan.coerceIn(0f, 1f)) }
         if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
+    }
+    fun setTrackInput(trackId: Int, inputSource: String) {
+        updateTrack(trackId) { it.copy(inputSource = inputSource) }
+    }
+    fun refreshAvailableInputs() {
+        _availableInputs.value = audioEngine.getAvailableInputs(getApplication())
     }
     fun setTrackEq(trackId: Int, low: Float, mid: Float, high: Float) {
         updateTrack(trackId) { it.copy(eqLow = low, eqMid = mid, eqHigh = high) }

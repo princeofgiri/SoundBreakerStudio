@@ -36,6 +36,9 @@ fun InspectorPanel(
     eqHighValue: Float = 0f,
     onEqChange: (Float, Float, Float) -> Unit = { _, _, _ -> },
     effects: List<Pair<String, Boolean>>,
+    inputSource: String = "Mic",
+    availableInputs: List<String> = listOf("Mic"),
+    onInputSourceChange: (String) -> Unit = {},
     onDelete: () -> Unit = {},
     onVolumeChange: (Float) -> Unit = {},
     onPanChange: (Float) -> Unit = {},
@@ -52,6 +55,53 @@ fun InspectorPanel(
             InspectorRow("Type", trackType)
             InspectorRow("Sample Rate", "${sampleRate} Hz")
             InspectorRow("Bit Depth", "${bitDepth}-bit")
+            Spacer(modifier = Modifier.height(8.dp))
+            // Input Source selector
+            InspectorRow("Input", inputSource)
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                availableInputs.take(3).forEach { input ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
+                            .clickable { onInputSourceChange(input) }
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = input.take(6),
+                            color = if (inputSource == input) AccentBlue else TextMuted,
+                            fontSize = 9.sp,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            if (availableInputs.size > 3) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    availableInputs.drop(3).take(3).forEach { input ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
+                                .clickable { onInputSourceChange(input) }
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = input.take(6),
+                                color = if (inputSource == input) AccentBlue else TextMuted,
+                                fontSize = 9.sp,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
             InspectorRow("Volume", "${(volume * 100).toInt()}%")
             InspectorSlider(value = volume, onValueChange = onVolumeChange)

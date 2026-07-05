@@ -23,6 +23,7 @@ fun TopBar(
     onNew: () -> Unit = {},
     onOpen: () -> Unit = {},
     onSave: () -> Unit = {},
+    onExport: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -76,7 +77,7 @@ fun TopBar(
         Spacer(modifier = Modifier.weight(1f))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("New", "Open", "Save").forEach { action ->
+            listOf("New", "Open", "Save", "Export").forEach { action ->
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
@@ -85,6 +86,7 @@ fun TopBar(
                                 "New" -> onNew()
                                 "Open" -> onOpen()
                                 "Save" -> onSave()
+                                "Export" -> onExport()
                             }
                         }
                         .padding(horizontal = 10.dp, vertical = 6.dp),

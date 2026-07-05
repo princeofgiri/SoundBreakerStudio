@@ -50,6 +50,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val masterVolume by viewModel.masterVolume.collectAsState()
     val masterPan by viewModel.masterPan.collectAsState()
     val trackAmplitudes by viewModel.trackAmplitudes.collectAsState()
+    val availableInputs by viewModel.availableInputs.collectAsState()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -106,6 +107,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
             onNew = { viewModel.newProject() },
             onOpen = { openProjectLauncher.launch(arrayOf("application/json", "*/*")) },
             onSave = { saveNameText = project.name; showSaveDialog = true },
+            onExport = { exportWavLauncher.launch("${project.name}.wav") },
         )
 
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -206,6 +208,9 @@ fun StudioScreen(viewModel: StudioViewModel) {
                         eqLowValue = sel.eqLow, eqMidValue = sel.eqMid, eqHighValue = sel.eqHigh,
                         onEqChange = { low, mid, high -> viewModel.setTrackEq(sel.id, low, mid, high) },
                         effects = sel.effects.map { it.name to it.isEnabled },
+                        inputSource = sel.inputSource,
+                        availableInputs = availableInputs,
+                        onInputSourceChange = { viewModel.setTrackInput(sel.id, it) },
                         onDelete = { deleteTrackId = sel.id; showDeleteDialog = true },
                         onVolumeChange = { newVol -> viewModel.setTrackVolume(sel.id, newVol) },
                         onPanChange = { newPan -> viewModel.setTrackPan(sel.id, newPan) },

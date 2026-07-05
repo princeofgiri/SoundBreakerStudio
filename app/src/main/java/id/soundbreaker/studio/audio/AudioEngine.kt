@@ -1,9 +1,12 @@
 package id.soundbreaker.studio.audio
 
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.content.Context
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.RandomAccessFile
@@ -285,6 +288,25 @@ class AudioEngine {
 
     fun setMasterPan(pan: Float) {
         masterPan = pan
+    }
+
+    fun getAvailableInputs(context: Context): List<String> {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+        val inputs = mutableListOf("Mic")
+        for (device in devices) {
+            val name = device.productName?.toString() ?: continue
+            if (name.isBlank()) continue
+            when (device.type) {
+                AudioDeviceInfo.TYPE_USB_DEVICE -> inputs.add("USB: $name")
+                AudioDeviceInfo.TYPE_USB_ACCESSORY -> inputs.add("USB: $name")
+                AudioDeviceInfo.TYPE_USB_HEADSET -> inputs.add("USB: $name")
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> inputs.add("BT: $name")
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> inputs.add("BT: $name")
+                AudioDeviceInfo.TYPE_BUILTIN_MIC -> { /* already have "Mic" */ }
+            }
+        }
+        return inputs.distinct()
     }
 
     private fun mixMultipleTracks(
