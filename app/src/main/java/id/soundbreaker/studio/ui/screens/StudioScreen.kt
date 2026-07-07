@@ -204,6 +204,16 @@ fun StudioScreen(viewModel: StudioViewModel) {
                                 }
                             }
                         }
+                        // Horizontal scrollbar
+                        TimelineScrollBar(
+                            scrollState = horizontalScrollState,
+                            totalWidthDp = barWidth * project.totalBars,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(16.dp)
+                                .background(Color(0xFF111111))
+                                .padding(horizontal = 4.dp, vertical = 3.dp),
+                        )
                     }
                 }
             }

@@ -9,9 +9,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -393,5 +391,61 @@ fun TrackLane(
                     },
             )
         }
+    }
+}
+
+@Composable
+fun TimelineScrollBar(
+    scrollState: androidx.compose.foundation.ScrollState,
+    totalWidthDp: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val totalWidthPx = with(density) { totalWidthDp.toPx() }
+    val maxValue = scrollState.maxValue
+    var thumbOffset by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(maxValue) {
+        snapshotFlow { scrollState.value }.collect { value ->
+            if (maxValue > 0) {
+                thumbOffset = value.toFloat() / maxValue
+            }
+        }
+    }
+
+    LaunchedEffect(thumbOffset) {
+        scrollState.scrollTo((thumbOffset * maxValue).toInt())
+    }
+
+    BoxWithConstraints(modifier = modifier) {
+        val viewportWidth = constraints.maxWidth.toFloat()
+        if (totalWidthPx <= viewportWidth || maxValue <= 0) return@BoxWithConstraints
+
+        val thumbRatio = (viewportWidth / totalWidthPx).coerceIn(0.05f, 1f)
+        val thumbWidth = thumbRatio * viewportWidth
+        val maxThumbX = viewportWidth - thumbWidth
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF1A1A1A))
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(with(density) { thumbWidth.toDp() })
+                .offset(x = with(density) { (thumbOffset * maxThumbX).toDp() })
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF555555))
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        val delta = dragAmount.x / maxThumbX
+                        thumbOffset = (thumbOffset + delta).coerceIn(0f, 1f)
+                    }
+                }
+        )
     }
 }
