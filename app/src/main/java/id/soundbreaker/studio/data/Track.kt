@@ -36,14 +36,8 @@ data class AudioRegion(
     val startBar: Float,
     val widthBars: Float,
     val waveform: FloatArray? = null,
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is AudioRegion) return false
-        return id == other.id
-    }
-    override fun hashCode(): Int = id
-}
+    val audioOffsetBars: Float = 0f,
+)
 
 data class Effect(
     val id: Int,

@@ -31,6 +31,7 @@ data class RegionData(
     val name: String,
     val startBar: Float,
     val widthBars: Float,
+    val audioOffsetBars: Float = 0f,
 )
 
 fun ProjectState.toProjectData(): ProjectData {
@@ -60,6 +61,7 @@ fun ProjectState.toProjectData(): ProjectData {
                         name = region.name,
                         startBar = region.startBar,
                         widthBars = region.widthBars,
+                        audioOffsetBars = region.audioOffsetBars,
                     )
                 }
             )
@@ -95,6 +97,7 @@ fun ProjectData.toJson(): String {
             regionObj.put("name", region.name)
             regionObj.put("startBar", region.startBar.toDouble())
             regionObj.put("widthBars", region.widthBars.toDouble())
+            regionObj.put("audioOffsetBars", region.audioOffsetBars.toDouble())
             regionsArray.put(regionObj)
         }
         trackObj.put("regions", regionsArray)
@@ -130,6 +133,7 @@ fun parseProjectData(json: String): ProjectData? {
                     name = regionObj.getString("name"),
                     startBar = regionObj.getDouble("startBar").toFloat(),
                     widthBars = regionObj.getDouble("widthBars").toFloat(),
+                    audioOffsetBars = regionObj.optDouble("audioOffsetBars", 0.0).toFloat(),
                 ))
             }
 
@@ -199,6 +203,8 @@ fun ProjectData.toProjectState(): ProjectState {
                         name = region.name,
                         startBar = region.startBar,
                         widthBars = region.widthBars,
+                        waveform = null,
+                        audioOffsetBars = region.audioOffsetBars,
                     )
                 },
             )
