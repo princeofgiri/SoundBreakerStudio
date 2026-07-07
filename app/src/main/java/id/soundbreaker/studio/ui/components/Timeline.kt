@@ -177,11 +177,23 @@ fun TimelineRuler(
             .height(24.dp)
             .background(Color(0xFF161616))
             .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    if (onBarTap != null) {
-                        val tappedBar = (offset.x / barWidthPx) + 1f
-                        onBarTap(tappedBar.coerceIn(1f, totalBars.toFloat()))
+                awaitEachGesture {
+                    val down = awaitPointerEvent(PointerEventPass.Initial)
+                    val firstChange = down.changes.firstOrNull()
+                    android.util.Log.e("SB", "Ruler: Initial pass, pressed=${firstChange?.pressed}, consumed=${firstChange?.isConsumed}")
+                    if (firstChange != null && firstChange.pressed) {
+                        firstChange.consume()
+                        android.util.Log.e("SB", "Ruler: consumed=true")
+                        val tappedBar = (firstChange.position.x / barWidthPx) + 1f
+                        if (onBarTap != null) {
+                            onBarTap(tappedBar.coerceIn(1f, totalBars.toFloat()))
+                        }
                     }
+                    // Keep consuming drag events so parent scroll doesn't start
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.forEach { it.consume() }
+                    } while (event.changes.any { it.pressed })
                 }
             },
     ) {
