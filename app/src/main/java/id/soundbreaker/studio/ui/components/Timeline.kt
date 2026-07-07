@@ -375,19 +375,34 @@ fun TrackLane(
                     .width(widthDp)
                     .height(60.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .clickable { onRegionTap(regionId) }
                     .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { onRegionTap(regionId) },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                val beatWidthPx = barWidthPx / 4f
-                                val beats = (dragAmount.x / beatWidthPx).toInt()
-                                if (beats != 0) {
-                                    onRegionDrag(regionId, latestStartBar + beats * 0.25f)
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            down.consume()
+                            onRegionTap(regionId)
+
+                            var prevX = down.position.x
+                            var accumulatedDx = 0f
+                            var hasDragged = false
+
+                            do {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (change.pressed) {
+                                    val dx = change.position.x - prevX
+                                    accumulatedDx += dx
+                                    val beatWidthPx = barWidthPx / 4f
+                                    val beats = (accumulatedDx / beatWidthPx).toInt()
+                                    if (beats != 0) {
+                                        hasDragged = true
+                                        onRegionDrag(regionId, latestStartBar + beats * 0.25f)
+                                        accumulatedDx -= beats * beatWidthPx
+                                    }
+                                    prevX = change.position.x
+                                    change.consume()
                                 }
-                            },
-                        )
+                            } while (event.changes.any { it.pressed })
+                        }
                     },
             )
         }
@@ -403,18 +418,14 @@ fun TimelineScrollBar(
     val density = LocalDensity.current
     val totalWidthPx = with(density) { totalWidthDp.toPx() }
     val maxValue = scrollState.maxValue
-    var thumbOffset by remember { mutableStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragTarget by remember { mutableStateOf(0) }
 
-    LaunchedEffect(maxValue) {
-        snapshotFlow { scrollState.value }.collect { value ->
-            if (maxValue > 0) {
-                thumbOffset = value.toFloat() / maxValue
-            }
+    // When user drags thumb, update scrollState smoothly
+    LaunchedEffect(dragTarget, isDragging) {
+        if (isDragging) {
+            scrollState.scrollTo(dragTarget)
         }
-    }
-
-    LaunchedEffect(thumbOffset) {
-        scrollState.scrollTo((thumbOffset * maxValue).toInt())
     }
 
     BoxWithConstraints(modifier = modifier) {
@@ -425,6 +436,15 @@ fun TimelineScrollBar(
         val thumbWidth = thumbRatio * viewportWidth
         val maxThumbX = viewportWidth - thumbWidth
 
+        val thumbFraction = if (isDragging) {
+            dragTarget.toFloat() / maxValue
+        } else {
+            // Read from scrollState to position thumb
+            val sv = scrollState.value
+            sv.toFloat() / maxValue
+        }
+
+        // Track background
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -432,20 +452,30 @@ fun TimelineScrollBar(
                 .background(Color(0xFF1A1A1A))
         )
 
+        // Thumb
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(with(density) { thumbWidth.toDp() })
-                .offset(x = with(density) { (thumbOffset * maxThumbX).toDp() })
+                .offset(x = with(density) { (thumbFraction * maxThumbX).toDp() })
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF555555))
                 .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        val delta = dragAmount.x / maxThumbX
-                        thumbOffset = (thumbOffset + delta).coerceIn(0f, 1f)
-                    }
+                    detectDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            dragTarget = scrollState.value
+                        },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            val scrollDelta = (dragAmount.x / maxThumbX * maxValue).toInt()
+                            dragTarget = (dragTarget + scrollDelta).coerceIn(0, maxValue)
+                        },
+                    )
                 }
         )
     }
 }
+
