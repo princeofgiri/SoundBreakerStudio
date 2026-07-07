@@ -36,6 +36,7 @@ data class AudioRegion(
     val startBar: Float,
     val widthBars: Float,
     val waveform: FloatArray? = null,
+    val audioOffsetBars: Float = 0f,
 )
 
 data class Effect(
