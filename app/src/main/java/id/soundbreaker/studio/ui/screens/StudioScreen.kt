@@ -5,12 +5,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -34,6 +33,7 @@ import id.soundbreaker.studio.MainActivity
 import id.soundbreaker.studio.data.*
 import id.soundbreaker.studio.ui.components.*
 import id.soundbreaker.studio.ui.theme.*
+import kotlinx.coroutines.launch
 import id.soundbreaker.studio.viewmodel.StudioViewModel
 
 val RULER_HEIGHT = 24.dp
@@ -70,24 +70,24 @@ fun StudioScreen(viewModel: StudioViewModel) {
     var bpmText by remember { mutableStateOf(project.bpm.toString()) }
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
     val barWidth = 40.dp
     val barWidthPx = with(density) { barWidth.toPx() }
 
     // Auto-scroll to follow playhead (always, including navigation)
     LaunchedEffect(project.playheadPosition) {
         val playheadPx = (project.playheadPosition - 1f) * barWidthPx
-        val scrollMax = horizontalScrollState.maxValue.toFloat()
         val scrollOffset = horizontalScrollState.value.toFloat()
 
         // Near right edge or past visible area: scroll to center playhead
         if (playheadPx > scrollOffset + barWidthPx * 20) {
-            val target = (playheadPx - barWidthPx * 5).coerceIn(0f, scrollMax)
-            horizontalScrollState.animateScrollTo(target.toInt())
+            val target = (playheadPx - barWidthPx * 5).toInt().coerceAtLeast(0)
+            horizontalScrollState.scrollTo(target)
         }
         // Near left edge
         if (playheadPx < scrollOffset + barWidthPx && scrollOffset > 0f) {
-            val target = (playheadPx - barWidthPx * 2).coerceIn(0f, scrollMax)
-            horizontalScrollState.animateScrollTo(target.toInt())
+            val target = (playheadPx - barWidthPx * 2).toInt().coerceAtLeast(0)
+            horizontalScrollState.scrollTo(target)
         }
     }
 
@@ -187,9 +187,11 @@ fun StudioScreen(viewModel: StudioViewModel) {
                 if (project.tracks.isEmpty()) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth().background(DarkBackground))
                 } else {
-                    Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                          BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            // Scrollable content
                             Column(modifier = Modifier
+                                .fillMaxHeight()
                                 .verticalScroll(verticalScrollState)
                                 .horizontalScroll(horizontalScrollState)
                             ) {
@@ -201,27 +203,38 @@ fun StudioScreen(viewModel: StudioViewModel) {
                                         regions = track.regions, color = track.color, isEven = index % 2 == 0,
                                         totalBars = project.totalBars, currentBar = project.playheadPosition,
                                         selectedRegionId = selectedRegionId,
+                                        touchedRegionId = touchedRegionId,
                                         onRegionTap = { viewModel.selectRegion(it) },
                                         onRegionDrag = { id, newStart -> viewModel.moveRegion(id, newStart) },
-                                        onBackgroundTap = { bar -> viewModel.startPlaybackFromPosition(bar) },
+                                        onRegionDragStart = { touchedRegionId = it },
+                                        onRegionDragEnd = { touchedRegionId = null },
+                                        onBackgroundTap = { bar ->
+                                            if (isPlaying) viewModel.startPlaybackFromPosition(bar) else viewModel.setPlayheadPosition(bar)
+                                        },
                                         barWidthDp = barWidth,
                                     )
                                 }
                             }
+                          }
+                          // Horizontal scrollbar
+                          TimelineScrollBar(
+                              scrollPx = horizontalScrollState.value,
+                              onScrollPxChange = { target ->
+                                  coroutineScope.launch {
+                                      horizontalScrollState.scrollTo(target)
+                                  }
+                              },
+                              maxScrollPx = horizontalScrollState.maxValue,
+                              totalWidthDp = barWidth * project.totalBars,
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .height(16.dp)
+                                  .background(Color(0xFF111111))
+                                  .padding(horizontal = 4.dp, vertical = 3.dp),
+                          )
                         }
-                        // Horizontal scrollbar
-                        TimelineScrollBar(
-                            scrollState = horizontalScrollState,
-                            totalWidthDp = barWidth * project.totalBars,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(16.dp)
-                                .background(Color(0xFF111111))
-                                .padding(horizontal = 4.dp, vertical = 3.dp),
-                        )
                     }
                 }
-            }
 
             // Inspector
             if (isInspectorVisible) {

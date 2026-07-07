@@ -1,11 +1,14 @@
 package id.soundbreaker.studio.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -177,23 +180,16 @@ fun TimelineRuler(
             .height(24.dp)
             .background(Color(0xFF161616))
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitPointerEvent(PointerEventPass.Initial)
-                    val firstChange = down.changes.firstOrNull()
-                    android.util.Log.e("SB", "Ruler: Initial pass, pressed=${firstChange?.pressed}, consumed=${firstChange?.isConsumed}")
-                    if (firstChange != null && firstChange.pressed) {
-                        firstChange.consume()
-                        android.util.Log.e("SB", "Ruler: consumed=true")
-                        val tappedBar = (firstChange.position.x / barWidthPx) + 1f
-                        if (onBarTap != null) {
-                            onBarTap(tappedBar.coerceIn(1f, totalBars.toFloat()))
-                        }
-                    }
-                    // Keep consuming drag events so parent scroll doesn't start
-                    do {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        event.changes.forEach { it.consume() }
-                    } while (event.changes.any { it.pressed })
+                detectTapGestures { offset ->
+                    val tappedBar = (offset.x / barWidthPx) + 1f
+                    onBarTap?.invoke(tappedBar.coerceIn(1f, totalBars.toFloat()))
+                }
+            }
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    val tappedBar = (change.position.x / barWidthPx) + 1f
+                    onBarTap?.invoke(tappedBar.coerceIn(1f, totalBars.toFloat()))
                 }
             },
     ) {
@@ -249,107 +245,49 @@ fun TrackLane(
     touchedRegionId: Int? = null,
     onRegionTap: (Int) -> Unit = {},
     onRegionDrag: (Int, Float) -> Unit = { _, _ -> },
+    onRegionDragStart: (Int) -> Unit = {},
+    onRegionDragEnd: () -> Unit = {},
     onBackgroundTap: (Float) -> Unit = {},
     barWidthDp: androidx.compose.ui.unit.Dp = 40.dp,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val textMeasurer = rememberTextMeasurer()
     val barWidthPx = with(density) { barWidthDp.toPx() }
-
-    val regionTopPx = with(density) { 6.dp.toPx() }
-    val regionHeightPx = with(density) { 60.dp.toPx() }
-    val regionRadiusPx = with(density) { 6.dp.toPx() }
 
     Box(
         modifier = modifier
             .width(barWidthDp * totalBars)
             .height(72.dp)
             .clipToBounds()
-            .background(if (isEven) Color(0xFF0F0F0F) else Color(0xFF111111)),
-    ) {
-
-        // Canvas for drawing regions + waveform
-        androidx.compose.foundation.Canvas(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            regions.forEach { region ->
-                val startPx = (region.startBar - 1f) * barWidthPx
-                val widthPx = region.widthBars * barWidthPx
-                val left = startPx
-                val top = regionTopPx
-                val isTouched = region.id == touchedRegionId
-                val isSel = region.id == selectedRegionId
-
-                // Region background
-                drawRoundRect(
-                    color = when {
-                        isTouched -> Color(0xFF666666).copy(alpha = 0.5f)
-                        isSel -> color.copy(alpha = 0.3f)
-                        else -> color.copy(alpha = 0.15f)
-                    },
-                    topLeft = Offset(left, top),
-                    size = Size(widthPx, regionHeightPx),
-                    cornerRadius = CornerRadius(regionRadiusPx),
-                )
-
-                // Selection border
-                if (isSel && !isTouched) {
-                    drawRoundRect(
-                        color = color,
-                        topLeft = Offset(left, top),
-                        size = Size(widthPx, regionHeightPx),
-                        cornerRadius = CornerRadius(regionRadiusPx),
-                        style = Stroke(width = with(density) { 2.dp.toPx() }),
-                    )
-                }
-
-                // Draw waveform (symmetric filled envelope)
-                val waveform = region.waveform
-                if (waveform != null && waveform.isNotEmpty()) {
-                    val waveWidth = widthPx - 16.dp.toPx()
-                    val waveHeight = regionHeightPx - 16.dp.toPx()
-                    val waveStartX = left + 8.dp.toPx()
-                    val waveStartY = top + 8.dp.toPx()
-                    val centerY = waveStartY + waveHeight / 2
-                    val barWidthPx = waveWidth / waveform.size
-                    val halfBarHeight = waveHeight / 2
-
-                    for (i in waveform.indices) {
-                        val x = waveStartX + i * barWidthPx
-                        val barHeight = waveform[i] * halfBarHeight
-
-                        // Filled symmetric bar from center
-                        drawRect(
-                            color = color.copy(alpha = 0.5f),
-                            topLeft = Offset(x, centerY - barHeight),
-                            size = Size(barWidthPx.coerceAtLeast(2f), barHeight * 2),
-                        )
+            .background(if (isEven) Color(0xFF0F0F0F) else Color(0xFF111111))
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { offset ->
+                        val bar = (offset.x / barWidthPx) + 1f
+                        onBackgroundTap(bar)
                     }
-                }
-
-                // Region name text
-                val textLayoutResult = textMeasurer.measure(
-                    text = region.name,
-                    style = TextStyle(
-                        color = when {
-                            isTouched -> Color.White
-                            isSel -> Color.White
-                            else -> color.copy(alpha = 0.8f)
-                        },
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    maxLines = 1,
                 )
-                drawText(
-                    textLayoutResult = textLayoutResult,
-                    topLeft = androidx.compose.ui.geometry.Offset(left + with(density) { 8.dp.toPx() }, top + with(density) { 4.dp.toPx() }),
+            },
+    ) {
+        regions.forEach { region ->
+            val isSel = region.id == selectedRegionId
+            val isTouched = region.id == touchedRegionId
+            androidx.compose.runtime.key(region.id) {
+                AudioRegionItem(
+                    region = region,
+                    color = color,
+                    isSel = isSel,
+                    isTouched = isTouched,
+                    barWidthPx = barWidthPx,
+                    density = density,
+                    onRegionTap = onRegionTap,
+                    onRegionDrag = onRegionDrag,
+                    onRegionDragStart = onRegionDragStart,
+                    onRegionDragEnd = onRegionDragEnd
                 )
             }
         }
 
-        // Playhead line as Box (same offset method as ruler)
         val playheadX = barWidthDp * (currentBar - 1f)
         Box(
             modifier = Modifier
@@ -363,34 +301,23 @@ fun TrackLane(
 
 @Composable
 fun TimelineScrollBar(
-    scrollState: androidx.compose.foundation.ScrollState,
+    scrollPx: Int,
+    onScrollPxChange: (Int) -> Unit,
+    maxScrollPx: Int,
     totalWidthDp: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val totalWidthPx = with(density) { totalWidthDp.toPx() }
-    var dragValue by remember { mutableIntStateOf(0) }
-    var isDragging by remember { mutableStateOf(false) }
-
-    // sync: scrollState -> dragValue (when external scroll)
-    LaunchedEffect(Unit) {
-        snapshotFlow { scrollState.value }.collect { if (!isDragging) dragValue = it }
-    }
-
-    // sync: dragValue -> scrollState (when dragging)
-    LaunchedEffect(dragValue, isDragging) {
-        if (isDragging) scrollState.scrollTo(dragValue)
-    }
 
     BoxWithConstraints(modifier = modifier) {
         val viewportWidth = constraints.maxWidth.toFloat()
-        val maxValue = scrollState.maxValue
-        if (totalWidthPx <= viewportWidth || maxValue <= 0) return@BoxWithConstraints
+        if (totalWidthPx <= viewportWidth || maxScrollPx <= 0) return@BoxWithConstraints
 
         val thumbRatio = (viewportWidth / totalWidthPx).coerceIn(0.05f, 1f)
         val thumbWidth = thumbRatio * viewportWidth
         val maxThumbX = viewportWidth - thumbWidth
-        val scrollFraction = dragValue.toFloat() / maxValue
+        val scrollFraction = scrollPx.toFloat() / maxScrollPx
 
         Box(
             modifier = Modifier
@@ -398,6 +325,11 @@ fun TimelineScrollBar(
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF1A1A1A))
         )
+
+        val currentScrollPx by rememberUpdatedState(scrollPx)
+        val currentMaxScrollPx by rememberUpdatedState(maxScrollPx)
+        val currentMaxThumbX by rememberUpdatedState(maxThumbX)
+        val currentOnScrollPxChange by rememberUpdatedState(onScrollPxChange)
 
         Box(
             modifier = Modifier
@@ -407,18 +339,127 @@ fun TimelineScrollBar(
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF555555))
                 .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { isDragging = true },
-                        onDragEnd = { isDragging = false },
-                        onDragCancel = { isDragging = false },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            val delta = (dragAmount.x / maxThumbX * maxValue).toInt()
-                            dragValue = (dragValue + delta).coerceIn(0, maxValue)
-                        }
-                    )
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        val delta = (dragAmount.x / currentMaxThumbX * currentMaxScrollPx).toInt()
+                        currentOnScrollPxChange((currentScrollPx + delta).coerceIn(0, currentMaxScrollPx))
+                    }
                 }
         )
     }
 }
 
+@Composable
+private fun AudioRegionItem(
+    region: AudioRegion,
+    color: Color,
+    isSel: Boolean,
+    isTouched: Boolean,
+    barWidthPx: Float,
+    density: androidx.compose.ui.unit.Density,
+    onRegionTap: (Int) -> Unit,
+    onRegionDrag: (Int, Float) -> Unit,
+    onRegionDragStart: (Int) -> Unit,
+    onRegionDragEnd: () -> Unit,
+) {
+    val currentStartBar by rememberUpdatedState(region.startBar)
+    val currentOnRegionDrag by rememberUpdatedState(onRegionDrag)
+    val currentOnRegionTap by rememberUpdatedState(onRegionTap)
+    val currentOnRegionDragStart by rememberUpdatedState(onRegionDragStart)
+    val currentOnRegionDragEnd by rememberUpdatedState(onRegionDragEnd)
+
+    val startPx = (region.startBar - 1f) * barWidthPx
+    val widthPx = region.widthBars * barWidthPx
+
+    Box(
+        modifier = Modifier
+            .offset(x = with(density) { startPx.toDp() }, y = 6.dp)
+            .width(with(density) { widthPx.toDp() })
+            .height(60.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                when {
+                    isTouched -> Color(0xFF666666).copy(alpha = 0.5f)
+                    isSel -> color.copy(alpha = 0.3f)
+                    else -> color.copy(alpha = 0.15f)
+                }
+            )
+            .then(
+                if (isSel && !isTouched) {
+                    Modifier.border(2.dp, color, RoundedCornerShape(6.dp))
+                } else Modifier
+            )
+            .pointerInput(region.id) {
+                detectTapGestures(
+                    onTap = {
+                        Log.d("TimelineGesture", "Tap region.id = ${region.id}")
+                        currentOnRegionTap(region.id)
+                    }
+                )
+            }
+            .pointerInput(region.id) {
+                var dragStartBar = 0f
+                var totalDrag = 0f
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        Log.d("TimelineGesture", "DragStart region.id = ${region.id}, currentStartBar = $currentStartBar")
+                        currentOnRegionTap(region.id)
+                        currentOnRegionDragStart(region.id)
+                        dragStartBar = currentStartBar
+                        totalDrag = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDrag += dragAmount.x
+                        val newStartBar = dragStartBar + totalDrag / barWidthPx
+                        Log.d("TimelineGesture", "Dragging region.id = ${region.id}, dragAmount.x = ${dragAmount.x}, totalDrag = $totalDrag, newStartBar = $newStartBar")
+                        currentOnRegionDrag(region.id, newStartBar)
+                    },
+                    onDragEnd = {
+                        Log.d("TimelineGesture", "DragEnd region.id = ${region.id}")
+                        currentOnRegionDragEnd()
+                    },
+                    onDragCancel = {
+                        Log.d("TimelineGesture", "DragCancel region.id = ${region.id}")
+                        currentOnRegionDragEnd()
+                    }
+                )
+            }
+    ) {
+        val waveform = region.waveform
+        if (waveform != null && waveform.isNotEmpty()) {
+            androidx.compose.foundation.Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                val waveWidth = size.width
+                val waveHeight = size.height
+                val centerY = waveHeight / 2
+                val waveBarWidthPx = waveWidth / waveform.size
+                val halfBarHeight = waveHeight / 2
+
+                for (i in waveform.indices) {
+                    val x = i * waveBarWidthPx
+                    val barHeight = waveform[i] * halfBarHeight
+
+                    drawRect(
+                        color = color.copy(alpha = 0.5f),
+                        topLeft = Offset(x, centerY - barHeight),
+                        size = Size(waveBarWidthPx.coerceAtLeast(2f), barHeight * 2),
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = region.name,
+            color = if (isSel || isTouched) Color.White else color.copy(alpha = 0.8f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 8.dp, top = 4.dp),
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
