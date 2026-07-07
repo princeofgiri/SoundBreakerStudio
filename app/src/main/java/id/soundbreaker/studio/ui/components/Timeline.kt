@@ -246,6 +246,7 @@ fun TrackLane(
     totalBars: Int = 200,
     currentBar: Float = 1f,
     selectedRegionId: Int? = null,
+    touchedRegionId: Int? = null,
     onRegionTap: (Int) -> Unit = {},
     onRegionDrag: (Int, Float) -> Unit = { _, _ -> },
     onBackgroundTap: (Float) -> Unit = {},
@@ -265,50 +266,7 @@ fun TrackLane(
             .width(barWidthDp * totalBars)
             .height(72.dp)
             .clipToBounds()
-            .background(if (isEven) Color(0xFF0F0F0F) else Color(0xFF111111))
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val downEvent = awaitPointerEvent(PointerEventPass.Initial)
-                    val firstChange = downEvent.changes.firstOrNull() ?: return@awaitEachGesture
-                    if (!firstChange.pressed) return@awaitEachGesture
-                    firstChange.consume()
-
-                    // Check if touch hits any region
-                    val hitRegion = regions.firstOrNull { region ->
-                        val startPx = (region.startBar - 1f) * barWidthPx
-                        val endPx = startPx + region.widthBars * barWidthPx
-                        firstChange.position.x in startPx..endPx &&
-                        firstChange.position.y in regionTopPx..(regionTopPx + regionHeightPx)
-                    }
-
-                    if (hitRegion != null) {
-                        onRegionTap(hitRegion.id)
-                        // Handle drag
-                        var prevX = firstChange.position.x
-                        var accumulatedDx = 0f
-                        do {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull() ?: break
-                            if (change.pressed) {
-                                change.consume()
-                                val dx = change.position.x - prevX
-                                accumulatedDx += dx
-                                val beatWidth = barWidthPx / 4f
-                                val beats = (accumulatedDx / beatWidth).toInt()
-                                if (beats != 0) {
-                                    onRegionDrag(hitRegion.id, hitRegion.startBar + beats * 0.25f)
-                                    accumulatedDx -= beats * beatWidth
-                                }
-                                prevX = change.position.x
-                            }
-                        } while (event.changes.any { it.pressed })
-                    } else {
-                        // Background tap — playback
-                        val tappedBar = (firstChange.position.x / barWidthPx) + 1f
-                        onBackgroundTap(tappedBar.coerceIn(1f, totalBars.toFloat()))
-                    }
-                }
-            },
+            .background(if (isEven) Color(0xFF0F0F0F) else Color(0xFF111111)),
     ) {
 
         // Canvas for drawing regions + waveform
@@ -320,18 +278,23 @@ fun TrackLane(
                 val widthPx = region.widthBars * barWidthPx
                 val left = startPx
                 val top = regionTopPx
-                val isSelected = region.id == selectedRegionId
+                val isTouched = region.id == touchedRegionId
+                val isSel = region.id == selectedRegionId
 
                 // Region background
                 drawRoundRect(
-                    color = if (isSelected) color.copy(alpha = 0.3f) else color.copy(alpha = 0.15f),
+                    color = when {
+                        isTouched -> Color(0xFF666666).copy(alpha = 0.5f)
+                        isSel -> color.copy(alpha = 0.3f)
+                        else -> color.copy(alpha = 0.15f)
+                    },
                     topLeft = Offset(left, top),
                     size = Size(widthPx, regionHeightPx),
                     cornerRadius = CornerRadius(regionRadiusPx),
                 )
 
                 // Selection border
-                if (isSelected) {
+                if (isSel && !isTouched) {
                     drawRoundRect(
                         color = color,
                         topLeft = Offset(left, top),
@@ -369,7 +332,11 @@ fun TrackLane(
                 val textLayoutResult = textMeasurer.measure(
                     text = region.name,
                     style = TextStyle(
-                        color = if (isSelected) Color.White else color.copy(alpha = 0.8f),
+                        color = when {
+                            isTouched -> Color.White
+                            isSel -> Color.White
+                            else -> color.copy(alpha = 0.8f)
+                        },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                     ),
@@ -402,16 +369,17 @@ fun TimelineScrollBar(
 ) {
     val density = LocalDensity.current
     val totalWidthPx = with(density) { totalWidthDp.toPx() }
-    var scrollPosition by remember { mutableIntStateOf(0) }
+    var dragValue by remember { mutableIntStateOf(0) }
+    var isDragging by remember { mutableStateOf(false) }
 
-    // Sync: scrollState -> scrollPosition (when external scroll happens)
+    // sync: scrollState -> dragValue (when external scroll)
     LaunchedEffect(Unit) {
-        snapshotFlow { scrollState.value }.collect { scrollPosition = it }
+        snapshotFlow { scrollState.value }.collect { if (!isDragging) dragValue = it }
     }
 
-    // Sync: scrollPosition -> scrollState (when scrollbar is dragged)
-    LaunchedEffect(scrollPosition) {
-        scrollState.scrollTo(scrollPosition)
+    // sync: dragValue -> scrollState (when dragging)
+    LaunchedEffect(dragValue, isDragging) {
+        if (isDragging) scrollState.scrollTo(dragValue)
     }
 
     BoxWithConstraints(modifier = modifier) {
@@ -422,7 +390,7 @@ fun TimelineScrollBar(
         val thumbRatio = (viewportWidth / totalWidthPx).coerceIn(0.05f, 1f)
         val thumbWidth = thumbRatio * viewportWidth
         val maxThumbX = viewportWidth - thumbWidth
-        val scrollFraction = if (maxValue > 0) scrollPosition.toFloat() / maxValue else 0f
+        val scrollFraction = dragValue.toFloat() / maxValue
 
         Box(
             modifier = Modifier
@@ -439,11 +407,16 @@ fun TimelineScrollBar(
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF555555))
                 .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        val delta = (dragAmount.x / maxThumbX * maxValue).toInt()
-                        scrollPosition = (scrollPosition + delta).coerceIn(0, maxValue)
-                    }
+                    detectDragGestures(
+                        onDragStart = { isDragging = true },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            val delta = (dragAmount.x / maxThumbX * maxValue).toInt()
+                            dragValue = (dragValue + delta).coerceIn(0, maxValue)
+                        }
+                    )
                 }
         )
     }
