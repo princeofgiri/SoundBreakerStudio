@@ -48,6 +48,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val _availableInputs = MutableStateFlow<List<String>>(listOf("Mic"))
     val availableInputs: StateFlow<List<String>> = _availableInputs.asStateFlow()
 
+    private val _availableOutputs = MutableStateFlow<List<String>>(listOf("Speaker"))
+    val availableOutputs: StateFlow<List<String>> = _availableOutputs.asStateFlow()
+
+    private val _outputDevice = MutableStateFlow("Speaker")
+    val outputDevice: StateFlow<String> = _outputDevice.asStateFlow()
+
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
@@ -90,6 +96,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _trackAmplitudes.value = amps
         }
         refreshAvailableInputs()
+        refreshAvailableOutputs()
     }
 
     fun hasRecordPermission(): Boolean {
@@ -100,12 +107,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun startRecording() {
         if (!hasRecordPermission()) { _message.value = "Izin rekam diperlukan"; return }
-        if (!_project.value.tracks.any { it.isArmed }) { _message.value = "Arm track dulu (tap R)"; return }
+        val armedTrack = _project.value.tracks.find { it.isArmed }
+        if (armedTrack == null) { _message.value = "Arm track dulu (tap R)"; return }
 
         _isRecording.value = true
         _project.value = _project.value.copy(isRecording = true, playheadPosition = 1f)
         startPlayheadTimer()
-        audioEngine.startRecording(getRecordFile())
+        audioEngine.startRecording(getRecordFile(), getApplication(), armedTrack.inputSource)
     }
 
     fun stopRecording() {
@@ -242,6 +250,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun refreshAvailableInputs() {
         _availableInputs.value = audioEngine.getAvailableInputs(getApplication())
+    }
+    fun refreshAvailableOutputs() {
+        _availableOutputs.value = audioEngine.getAvailableOutputs(getApplication())
+    }
+    fun setOutputDevice(deviceName: String) {
+        _outputDevice.value = deviceName
+        audioEngine.setOutputDevice(getApplication(), deviceName)
     }
     fun setTrackEq(trackId: Int, low: Float, mid: Float, high: Float) {
         updateTrack(trackId) { it.copy(eqLow = low, eqMid = mid, eqHigh = high) }
@@ -388,7 +403,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _message.value = "Region dipotong"
     }
 
-    fun selectRegion(id: Int) { _selectedRegionId.value = id }
+    fun selectRegion(id: Int) {
+        _selectedRegionId.value = id
+        val trackId = _project.value.tracks.find { it.regions.any { r -> r.id == id } }?.id
+        if (trackId != null) _selectedTrackId.value = trackId
+    }
 
     fun deleteSelectedRegion() {
         val regionId = _selectedRegionId.value ?: return
@@ -504,11 +523,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 android.util.Log.e("SoundBreaker", "Saving to: ${dir.absolutePath}")
 
                 val trackDataList = mutableListOf<JSONObject>()
-                for ((trackId, pcmData) in _trackPcmData) {
-                    val track = _project.value.tracks.find { it.id == trackId } ?: continue
+                for (track in _project.value.tracks) {
+                    val pcmData = _trackPcmData[track.id]
                     val wavName = track.name.replace(Regex("[^a-zA-Z0-9 _-]"), "_") + ".wav"
-                    val wavFile = File(dir, wavName)
-                    audioEngine.writeWavFile(pcmData, wavFile)
+                    if (pcmData != null && pcmData.isNotEmpty()) {
+                        val wavFile = File(dir, wavName)
+                        audioEngine.writeWavFile(pcmData, wavFile)
+                    }
 
                     val regions = JSONArray()
                     for (r in track.regions) {
@@ -523,7 +544,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         put("type", track.type.name)
                         put("color", String.format("#%02X%02X%02X", (track.color.red * 255).toInt(), (track.color.green * 255).toInt(), (track.color.blue * 255).toInt()))
                         put("volume", track.volume.toDouble()); put("pan", track.pan.toDouble())
-                        put("audioFile", wavName); put("regions", regions)
+                        put("audioFile", if (pcmData != null && pcmData.isNotEmpty()) wavName else "")
+                        put("inputSource", track.inputSource)
+                        put("channels", track.channels)
+                        put("bitDepth", track.bitDepth)
+                        put("eqLow", track.eqLow.toDouble())
+                        put("eqMid", track.eqMid.toDouble())
+                        put("eqHigh", track.eqHigh.toDouble())
+                        put("regions", regions)
                     })
                 }
 
@@ -593,6 +621,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     newTracks.add(Track(trackId, t.getString("name"), type, color,
                         t.getDouble("volume").toFloat(), t.getDouble("pan").toFloat(),
+                        inputSource = t.optString("inputSource", "Mic"),
+                        channels = t.optInt("channels", 2),
+                        bitDepth = t.optInt("bitDepth", 16),
+                        eqLow = t.optDouble("eqLow", 0.0).toFloat(),
+                        eqMid = t.optDouble("eqMid", 0.0).toFloat(),
+                        eqHigh = t.optDouble("eqHigh", 0.0).toFloat(),
                         regions = regions))
 
                     val audioFileName = t.optString("audioFile", "")
@@ -651,6 +685,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         _trackPcmData.clear()
                         _trackPcmData.putAll(newPcm)
                         regionIdCounter = tracksWithWaveform.maxOfOrNull { t -> t.regions.maxOfOrNull { it.id } ?: 0 } ?: 0
+                        nextTrackId = (tracksWithWaveform.maxOfOrNull { it.id } ?: 0) + 1
                         _message.value = "Opened: $name (${newPcm.size} tracks with audio)"
                     }
                 }

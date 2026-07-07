@@ -53,6 +53,8 @@ class AudioEngine {
     @Volatile private var masterPan = 0.5f
     private var eqFilters: Array<Array<BiquadFilter>> = emptyArray()
     private val effectsChain = TrackEffectsChain(SAMPLE_RATE)
+    private var preferredOutputDevice: String = "Speaker"
+    private var preferredOutputDeviceInfo: AudioDeviceInfo? = null
     private var playbackPosition = 0
 
     var onAmplitude: ((Float) -> Unit)? = null
@@ -61,19 +63,37 @@ class AudioEngine {
     var onPlaybackFinished: (() -> Unit)? = null
     var onTrackAmplitudes: ((List<Float>) -> Unit)? = null
 
-    fun startRecording(outputFile: File) {
+    fun startRecording(outputFile: File, context: Context? = null, deviceName: String = "Mic") {
         if (isRecording) return
 
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG_IN, AUDIO_FORMAT)
             .coerceAtLeast(SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS)
 
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG_IN,
-            AUDIO_FORMAT,
-            bufferSize
-        )
+        audioRecord = AudioRecord.Builder()
+            .setAudioSource(MediaRecorder.AudioSource.MIC)
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(SAMPLE_RATE)
+                    .setChannelMask(CHANNEL_CONFIG_IN)
+                    .setEncoding(AUDIO_FORMAT)
+                    .build()
+            )
+            .setBufferSizeInBytes(bufferSize)
+            .build()
+
+        // Route to specific device if not built-in mic
+        if (deviceName != "Mic" && context != null) {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            for (device in devices) {
+                val name = device.productName?.toString() ?: continue
+                if (deviceName.contains(name)) {
+                    android.util.Log.e("SB", "Routing recording to device: $name (id=${device.id})")
+                    audioRecord?.setPreferredDevice(device)
+                    break
+                }
+            }
+        }
 
         recordedBuffers.clear()
         totalRecordedFrames = 0
@@ -131,6 +151,11 @@ class AudioEngine {
             .setBufferSizeInBytes(bufferSize)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+
+        // Apply preferred output device
+        preferredOutputDeviceInfo?.let { device ->
+            audioTrack?.setPreferredDevice(device)
+        }
 
         playbackState = PlaybackState(
             buffers = trackPcmData,
@@ -200,8 +225,8 @@ class AudioEngine {
                     stereoOutput[j + 1] = right
                 }
 
-                val written = audioTrack?.write(stereoOutput, 0, stereoOutput.size) ?: -1
-                if (written > 0) {
+                val written = try { audioTrack?.write(stereoOutput, 0, stereoOutput.size) } catch (_: Exception) { -1 }
+                if (written != null && written > 0) {
                     playbackPosition += framesToRead
                     onPlaybackPosition?.invoke(playbackPosition, totalFrames)
                 } else {
@@ -309,6 +334,112 @@ class AudioEngine {
         return inputs.distinct()
     }
 
+    fun getAvailableOutputs(context: Context): List<String> {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        val outputs = mutableListOf("Speaker")
+        for (device in devices) {
+            val name = device.productName?.toString() ?: continue
+            if (name.isBlank()) continue
+            when (device.type) {
+                AudioDeviceInfo.TYPE_USB_DEVICE -> outputs.add("USB: $name")
+                AudioDeviceInfo.TYPE_USB_ACCESSORY -> outputs.add("USB: $name")
+                AudioDeviceInfo.TYPE_USB_HEADSET -> outputs.add("USB: $name")
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> outputs.add("BT: $name")
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> outputs.add("BT: $name")
+                AudioDeviceInfo.TYPE_WIRED_HEADSET -> outputs.add("Headset: $name")
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> outputs.add("Headphones: $name")
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> { /* already have "Speaker" */ }
+            }
+        }
+        return outputs.distinct()
+    }
+
+    fun setOutputDevice(context: Context, deviceName: String) {
+        preferredOutputDevice = deviceName
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+
+        if (deviceName == "Speaker") {
+            preferredOutputDeviceInfo = null
+            for (device in devices) {
+                if (device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                    preferredOutputDeviceInfo = device
+                    break
+                }
+            }
+            // If currently playing, need to restart with new device routing
+            restartWithCurrentState()
+            return
+        }
+
+        for (device in devices) {
+            val name = device.productName?.toString() ?: continue
+            if (deviceName.contains(name)) {
+                preferredOutputDeviceInfo = device
+                restartWithCurrentState()
+                break
+            }
+        }
+    }
+
+    private fun restartWithCurrentState() {
+        if (!isPlaying) return
+        val state = playbackState
+        val pos = playbackPosition
+        // Stop current playback
+        try { audioTrack?.stop() } catch (_: Exception) {}
+        try { audioTrack?.release() } catch (_: Exception) {}
+        audioTrack = null
+        isPlaying = false
+        isPaused = false
+        // Rebuild AudioTrack with new device routing
+        val minBuffer = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG_OUT, AUDIO_FORMAT)
+        val bufferSize = (minBuffer * 2).coerceAtLeast(8192)
+        audioTrack = AudioTrack.Builder()
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(SAMPLE_RATE)
+                    .setChannelMask(CHANNEL_CONFIG_OUT)
+                    .setEncoding(AUDIO_FORMAT)
+                    .build()
+            )
+            .setBufferSizeInBytes(bufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+        preferredOutputDeviceInfo?.let { audioTrack?.setPreferredDevice(it) }
+        playbackPosition = pos
+        isPlaying = true
+        audioTrack?.play()
+        playJob?.cancel()
+        playJob = scope.launch {
+            val framesPerChunk = 2048
+            val totalFrames = state.buffers.maxOfOrNull { it.size / 2 } ?: 0
+            while (isActive && isPlaying && playbackPosition < totalFrames) {
+                if (isPaused) { kotlinx.coroutines.delay(50); continue }
+                val st = playbackState
+                val framesToRead = minOf(framesPerChunk, totalFrames - playbackPosition)
+                val stereoOutput = mixMultipleTracks(st.buffers, playbackPosition, framesToRead, st.volumes, st.pans)
+                if (st.isClickOn && st.bpm > 0) mixClickTrack(stereoOutput, framesToRead, playbackPosition, st.bpm)
+                val mv = masterVolume; val mp = masterPan
+                val mpLeft = kotlin.math.cos(mp.toDouble() * Math.PI / 2.0).toFloat()
+                val mpRight = kotlin.math.sin(mp.toDouble() * Math.PI / 2.0).toFloat()
+                for (j in 0 until stereoOutput.size step 2) {
+                    stereoOutput[j] = (stereoOutput[j].toFloat() * mv * mpLeft).toInt().toShort()
+                    stereoOutput[j + 1] = (stereoOutput[j + 1].toFloat() * mv * mpRight).toInt().toShort()
+                }
+                val written = try { audioTrack?.write(stereoOutput, 0, stereoOutput.size) } catch (_: Exception) { -1 }
+                if (written != null && written > 0) {
+                    playbackPosition += framesToRead
+                    onPlaybackPosition?.invoke(playbackPosition, totalFrames)
+                } else break
+            }
+            try { audioTrack?.stop(); audioTrack?.release() } catch (_: Exception) {}
+            audioTrack = null; isPlaying = false; isPaused = false
+            onPlaybackFinished?.invoke()
+        }
+    }
+
     private fun mixMultipleTracks(
         tracks: List<ShortArray>,
         startFrame: Int,
@@ -404,28 +535,37 @@ class AudioEngine {
 
     fun readWavFile(file: File): ShortArray? {
         try {
-            val bytes = file.readBytes()
-            if (bytes.size < 44) return null
+            val fis = java.io.FileInputStream(file)
+            val header = ByteArray(44)
+            if (fis.read(header) < 44) { fis.close(); return null }
 
-            val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-
-            // Read channels from header (offset 22)
+            val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
             val channels = buffer.getShort(22).toInt().coerceIn(1, 2)
-
-            // Skip to data (offset 44)
-            buffer.position(44)
-
-            val dataSize = bytes.size - 44
             val bitsPerSample = 16
             val frameSize = channels * (bitsPerSample / 8)
+
+            // Get data size from header
+            val dataSize = buffer.getInt(40).toInt().coerceAtLeast(0)
             val totalFrames = dataSize / frameSize
 
             val pcmData = ShortArray(totalFrames * channels)
-            for (i in pcmData.indices) {
-                if (buffer.hasRemaining()) {
-                    pcmData[i] = buffer.short
+            val byteBuffer = ByteArray(8192)
+            var shortsRead = 0
+            val bb = ByteBuffer.wrap(byteBuffer).order(ByteOrder.LITTLE_ENDIAN)
+
+            while (shortsRead < pcmData.size) {
+                bb.clear()
+                val toRead = minOf(byteBuffer.size, (pcmData.size - shortsRead) * 2)
+                val bytesRead = fis.read(byteBuffer, 0, toRead)
+                if (bytesRead <= 0) break
+                val shortsInChunk = bytesRead / 2
+                for (i in 0 until shortsInChunk) {
+                    if (shortsRead < pcmData.size) {
+                        pcmData[shortsRead++] = bb.getShort(i * 2)
+                    }
                 }
             }
+            fis.close()
             android.util.Log.i("SoundBreaker", "readWav OK: ch=$channels, frames=$totalFrames, size=${pcmData.size}")
             return pcmData
         } catch (e: Exception) {

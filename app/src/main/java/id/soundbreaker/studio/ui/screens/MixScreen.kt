@@ -6,8 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +36,9 @@ fun MixScreen(
     onPanChange: (Int, Float) -> Unit,
     onMasterVolumeChange: (Float) -> Unit,
     onMasterPanChange: (Float) -> Unit,
+    outputDevice: String = "Speaker",
+    availableOutputs: List<String> = listOf("Speaker"),
+    onOutputDeviceChange: (String) -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -64,6 +66,9 @@ fun MixScreen(
             pan = masterPan,
             onVolumeChange = onMasterVolumeChange,
             onPanChange = onMasterPanChange,
+            outputDevice = outputDevice,
+            availableOutputs = availableOutputs,
+            onOutputDeviceChange = onOutputDeviceChange,
         )
     }
 }
@@ -291,11 +296,16 @@ private fun MixMasterStrip(
     pan: Float,
     onVolumeChange: (Float) -> Unit,
     onPanChange: (Float) -> Unit,
+    outputDevice: String = "Speaker",
+    availableOutputs: List<String> = listOf("Speaker"),
+    onOutputDeviceChange: (String) -> Unit = {},
 ) {
     val currentOnVolume = rememberUpdatedState(onVolumeChange)
     val currentOnPan = rememberUpdatedState(onPanChange)
+    val currentOnOutput = rememberUpdatedState(onOutputDeviceChange)
     val faderHeight = 200.dp
     val density = LocalDensity.current
+    var showOutputMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -419,5 +429,51 @@ private fun MixMasterStrip(
             color = TextMuted,
             fontSize = 8.sp,
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Output device selector
+        Text("OUTPUT", color = TextMuted, fontSize = 8.sp)
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF1A1A1A))
+                .clickable { showOutputMenu = !showOutputMenu }
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = outputDevice.take(7),
+                color = if (outputDevice != "Speaker") AccentBlue else TextMuted,
+                fontSize = 8.sp,
+                maxLines = 1,
+            )
+        }
+        if (showOutputMenu) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF2A2A2A))
+            ) {
+                availableOutputs.forEach { output ->
+                    Text(
+                        text = output.take(8),
+                        color = if (output == outputDevice) AccentBlue else TextPrimary,
+                        fontSize = 8.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                currentOnOutput.value(output)
+                                showOutputMenu = false
+                            }
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
 }

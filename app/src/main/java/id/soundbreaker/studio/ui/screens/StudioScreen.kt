@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +52,8 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val masterPan by viewModel.masterPan.collectAsState()
     val trackAmplitudes by viewModel.trackAmplitudes.collectAsState()
     val availableInputs by viewModel.availableInputs.collectAsState()
+    val availableOutputs by viewModel.availableOutputs.collectAsState()
+    val outputDevice by viewModel.outputDevice.collectAsState()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -125,6 +128,9 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
                     onMasterVolumeChange = { viewModel.setMasterVolume(it) },
                     onMasterPanChange = { viewModel.setMasterPan(it) },
+                    outputDevice = outputDevice,
+                    availableOutputs = availableOutputs,
+                    onOutputDeviceChange = { viewModel.setOutputDevice(it) },
                 )
             } else if (activeTab == "FX") {
                 FxScreen(
@@ -176,21 +182,26 @@ fun StudioScreen(viewModel: StudioViewModel) {
                 if (project.tracks.isEmpty()) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth().background(DarkBackground))
                 } else {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        Column(modifier = Modifier.verticalScroll(verticalScrollState).horizontalScroll(horizontalScrollState)) {
-                            TimelineRuler(totalBars = project.totalBars, currentBar = project.playheadPosition, barWidthDp = barWidth, onBarTap = { bar ->
-                                if (isPlaying) viewModel.startPlaybackFromPosition(bar) else viewModel.setPlayheadPosition(bar)
-                            })
-                            project.tracks.forEachIndexed { index, track ->
-                                TrackLane(
-                                    regions = track.regions, color = track.color, isEven = index % 2 == 0,
-                                    totalBars = project.totalBars, currentBar = project.playheadPosition,
-                                    selectedRegionId = selectedRegionId,
-                                    onRegionTap = { viewModel.selectRegion(it) },
-                                    onRegionDrag = { id, newStart -> viewModel.moveRegion(id, newStart) },
-                                    onBackgroundTap = { bar -> viewModel.startPlaybackFromPosition(bar) },
-                                    barWidthDp = barWidth,
-                                )
+                    Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            Column(modifier = Modifier
+                                .verticalScroll(verticalScrollState)
+                                .horizontalScroll(horizontalScrollState)
+                            ) {
+                                TimelineRuler(totalBars = project.totalBars, currentBar = project.playheadPosition, barWidthDp = barWidth, onBarTap = { bar ->
+                                    if (isPlaying) viewModel.startPlaybackFromPosition(bar) else viewModel.setPlayheadPosition(bar)
+                                })
+                                project.tracks.forEachIndexed { index, track ->
+                                    TrackLane(
+                                        regions = track.regions, color = track.color, isEven = index % 2 == 0,
+                                        totalBars = project.totalBars, currentBar = project.playheadPosition,
+                                        selectedRegionId = selectedRegionId,
+                                        onRegionTap = { viewModel.selectRegion(it) },
+                                        onRegionDrag = { id, newStart -> viewModel.moveRegion(id, newStart) },
+                                        onBackgroundTap = { bar -> viewModel.startPlaybackFromPosition(bar) },
+                                        barWidthDp = barWidth,
+                                    )
+                                }
                             }
                         }
                     }

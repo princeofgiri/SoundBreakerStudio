@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -245,6 +246,10 @@ fun TrackLane(
     val textMeasurer = rememberTextMeasurer()
     val barWidthPx = with(density) { barWidthDp.toPx() }
 
+    val regionTopPx = with(density) { 6.dp.toPx() }
+    val regionHeightPx = with(density) { 60.dp.toPx() }
+    val regionRadiusPx = with(density) { 6.dp.toPx() }
+
     Box(
         modifier = modifier
             .width(barWidthDp * totalBars)
@@ -254,14 +259,18 @@ fun TrackLane(
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
                     val tappedBar = (offset.x / barWidthPx) + 1f
-                    onBackgroundTap(tappedBar.coerceIn(1f, totalBars.toFloat()))
+                    // Check if tap hit any region
+                    val hitRegion = regions.any { region ->
+                        val startPx = (region.startBar - 1f) * barWidthPx
+                        val endPx = startPx + region.widthBars * barWidthPx
+                        offset.x in startPx..endPx && offset.y in regionTopPx..(regionTopPx + regionHeightPx)
+                    }
+                    if (!hitRegion) {
+                        onBackgroundTap(tappedBar.coerceIn(1f, totalBars.toFloat()))
+                    }
                 }
             },
     ) {
-        val regionTopPx = with(density) { 6.dp.toPx() }
-        val regionHeightPx = with(density) { 60.dp.toPx() }
-        val regionRadiusPx = with(density) { 6.dp.toPx() }
-
         // Grid lines
         for (bar in 1 until totalBars) {
             val x = bar * barWidthPx
@@ -368,32 +377,19 @@ fun TrackLane(
                     .width(widthDp)
                     .height(60.dp)
                     .clip(RoundedCornerShape(6.dp))
+                    .clickable { onRegionTap(regionId) }
                     .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown()
-                            onRegionTap(regionId)
-
-                            var prevX = down.position.x
-                            var accumulatedDx = 0f
-
-                            do {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: break
-                                if (change.pressed) {
-                                    val dx = change.position.x - prevX
-                                    accumulatedDx += dx
-
-                                    val beatWidthPx = barWidthPx / 4f
-                                    val beats = (accumulatedDx / beatWidthPx).toInt()
-                                    if (beats != 0) {
-                                        onRegionDrag(regionId, latestStartBar + beats * 0.25f)
-                                        accumulatedDx -= beats * beatWidthPx
-                                    }
-                                    prevX = change.position.x
-                                    change.consume()
+                        detectDragGestures(
+                            onDragStart = { onRegionTap(regionId) },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val beatWidthPx = barWidthPx / 4f
+                                val beats = (dragAmount.x / beatWidthPx).toInt()
+                                if (beats != 0) {
+                                    onRegionDrag(regionId, latestStartBar + beats * 0.25f)
                                 }
-                            } while (event.changes.any { it.pressed })
-                        }
+                            },
+                        )
                     },
             )
         }
