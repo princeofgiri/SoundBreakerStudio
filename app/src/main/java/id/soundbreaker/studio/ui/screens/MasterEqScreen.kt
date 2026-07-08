@@ -637,7 +637,7 @@ private fun EqBandSlider(
                     .background(Color(0xFF30363D))
             )
 
-            // Green fill bar from center (fraction = 0.5) to gain
+            // Gradient fill bar from center (fraction = 0.5) to gain
             if (kotlin.math.abs(gain) > 0.01f && enabled) {
                 val barFraction = kotlin.math.abs(fraction - 0.5f)
                 val barHeightDp = usableHeightDp * barFraction
@@ -649,15 +649,36 @@ private fun EqBandSlider(
                     usableHeightDp / 2f + thumbHeightDp / 2f
                 }
 
-                Box(
+                val density = LocalDensity.current
+                val usableHeightPx = with(density) { usableHeightDp.toPx() }
+                val thumbHeightPx = with(density) { thumbHeightDp.toPx() }
+                val yOffsetPx = with(density) { yOffsetDp.toPx() }
+
+                Canvas(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .width(6.dp)
                         .height(barHeightDp)
                         .offset(y = yOffsetDp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0xFF00C853))
-                )
+                ) {
+                    val startY = - (yOffsetPx - thumbHeightPx / 2f)
+                    val endY = usableHeightPx - (yOffsetPx - thumbHeightPx / 2f)
+                    val gradientBrush = Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color(0xFFFF1744), // Top (+12dB) -> Red
+                            0.25f to Color(0xFFFFD600), // +6dB -> Yellow
+                            0.5f to Color(0xFF00C853),  // Center (0dB) -> Green
+                            0.75f to Color(0xFFFFD600), // -6dB -> Yellow
+                            1.0f to Color(0xFFFF1744)  // Bottom (-12dB) -> Red
+                        ),
+                        startY = startY,
+                        endY = endY
+                    )
+                    drawRoundRect(
+                        brush = gradientBrush,
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                    )
+                }
             }
 
             // Thumb (horizontal capsule with border and middle green line)
