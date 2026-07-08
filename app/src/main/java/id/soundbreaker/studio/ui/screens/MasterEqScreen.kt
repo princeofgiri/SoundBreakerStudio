@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -78,86 +80,108 @@ fun MasterEqScreen(
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    // Preset chips
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        quickPresets.forEach { name ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(if (name == currentPreset) Color(0xFF00C853).copy(alpha = 0.3f) else Color(0xFF21262D))
-                                    .clickable { onPresetSelect(name) }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                            ) {
-                                Text(
-                                    text = name,
-                                    color = if (name == currentPreset) Color(0xFF00C853) else TextSecondary,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
-                                )
-                            }
-                        }
-                    }
+                     // Preset chips
+                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                         quickPresets.forEach { name ->
+                             val isSelected = name == currentPreset
+                             Box(
+                                 modifier = Modifier
+                                     .clip(RoundedCornerShape(16.dp))
+                                     .background(
+                                         when {
+                                             !eqEnabled -> Color(0xFF161B22)
+                                             isSelected -> Color(0xFF00C853).copy(alpha = 0.3f)
+                                             else -> Color(0xFF21262D)
+                                         }
+                                     )
+                                     .then(
+                                         if (eqEnabled) Modifier.clickable { onPresetSelect(name) }
+                                         else Modifier
+                                     )
+                                     .padding(horizontal = 12.dp, vertical = 6.dp),
+                             ) {
+                                 Text(
+                                     text = name,
+                                     color = when {
+                                         !eqEnabled -> TextMuted
+                                         isSelected -> Color(0xFF00C853)
+                                         else -> TextSecondary
+                                     },
+                                     fontSize = 10.sp,
+                                     fontWeight = FontWeight.Medium,
+                                 )
+                             }
+                         }
+                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Reset button
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF21262D))
-                            .clickable { onPresetSelect("Flat") },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("↺", color = TextSecondary, fontSize = 16.sp)
-                    }
-                }
+                     // Reset button
+                     Box(
+                         modifier = Modifier
+                             .size(32.dp)
+                             .clip(CircleShape)
+                             .background(if (eqEnabled) Color(0xFF21262D) else Color(0xFF161B22))
+                             .then(
+                                 if (eqEnabled) Modifier.clickable { onPresetSelect("Flat") }
+                                 else Modifier
+                             ),
+                         contentAlignment = Alignment.Center,
+                     ) {
+                         Text("↺", color = if (eqEnabled) TextSecondary else TextMuted, fontSize = 16.sp)
+                     }
+                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Waveform + EQ Curve visualization
-                EqCurveVisualization(eqBands = eqBands, enabled = eqEnabled)
+                 // Waveform + EQ Curve visualization
+                 EqCurveVisualization(eqBands = eqBands, enabled = eqEnabled)
 
-                Spacer(modifier = Modifier.height(12.dp))
+                 Spacer(modifier = Modifier.height(12.dp))
 
-                // EQ Band Sliders
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    MasterEqPresets.bandLabels.forEachIndexed { index, label ->
-                        val gain = eqBands.getOrElse(index) { 0f }
-                        EqBandSlider(
-                            label = label,
-                            gain = gain,
-                            onGainChange = { onBandChange(index, it) },
-                        )
-                    }
-                }
+                 // EQ Band Sliders
+                 Row(
+                     modifier = Modifier
+                         .fillMaxWidth()
+                         .weight(1f),
+                     horizontalArrangement = Arrangement.SpaceEvenly,
+                     verticalAlignment = Alignment.Top,
+                 ) {
+                     MasterEqPresets.bandLabels.forEachIndexed { index, label ->
+                         val gain = eqBands.getOrElse(index) { 0f }
+                         EqBandSlider(
+                             label = label,
+                             gain = gain,
+                             onGainChange = { onBandChange(index, it) },
+                             enabled = eqEnabled,
+                         )
+                     }
+                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Bottom info bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "GAIN RANGE ±12 dB · DOUBLE-CLICK FADER = 0 dB",
-                        color = TextMuted,
-                        fontSize = 9.sp,
-                    )
-                    Text(
-                        "PRESET: $currentPreset",
-                        color = if (currentPreset == "Custom") TextMuted else Color(0xFF00C853),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                 // Bottom info bar
+                 Row(
+                     modifier = Modifier.fillMaxWidth(),
+                     horizontalArrangement = Arrangement.SpaceBetween,
+                     verticalAlignment = Alignment.CenterVertically,
+                 ) {
+                     Text(
+                         "GAIN RANGE ±12 dB · DOUBLE-CLICK FADER = 0 dB",
+                         color = TextMuted,
+                         fontSize = 9.sp,
+                     )
+                     Text(
+                         "PRESET: $currentPreset",
+                         color = when {
+                             !eqEnabled -> TextMuted
+                             currentPreset == "Custom" -> TextMuted
+                             else -> Color(0xFF00C853)
+                         },
+                         fontSize = 9.sp,
+                         fontWeight = FontWeight.Bold,
+                     )
+                 }
             }
         }
     }
@@ -238,9 +262,9 @@ private fun EqBandSlider(
     label: String,
     gain: Float,
     onGainChange: (Float) -> Unit,
+    enabled: Boolean = true,
 ) {
-    val currentOnGain = rememberUpdatedState(onGainChange)
-    val density = LocalDensity.current
+    val currentOnGain by rememberUpdatedState(onGainChange)
     val fraction = ((gain + 12f) / 24f).coerceIn(0f, 1f)
 
     Column(
@@ -249,39 +273,55 @@ private fun EqBandSlider(
     ) {
         // Gain value
         Text(
-            text = if (kotlin.math.abs(gain) < 0.5f) "0.0" else String.format("%.1f", gain),
-            color = if (kotlin.math.abs(gain) > 0.01f) Color(0xFF00C853) else TextMuted,
+            text = if (kotlin.math.abs(gain) < 0.05f) "0.0" else String.format("%.1f", gain),
+            color = when {
+                !enabled -> TextMuted
+                kotlin.math.abs(gain) > 0.01f -> Color(0xFF00C853)
+                else -> TextMuted
+            },
             fontSize = 9.sp,
             fontWeight = FontWeight.Medium,
         )
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Slider track
-        Box(
+        // Slider track container
+        BoxWithConstraints(
             modifier = Modifier
                 .width(24.dp)
                 .weight(1f)
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF21262D))
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        down.consume()
-                        val h = with(density) { size.height.toFloat() }
-                        do {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (change.pressed) {
-                                val newFraction = (1f - change.position.y / h).coerceIn(0f, 1f)
-                                currentOnGain.value(newFraction * 24f - 12f)
-                                change.consume()
-                            }
-                        } while (event.changes.any { it.pressed })
-                    }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectTapGestures(
+                        onDoubleTap = {
+                            currentOnGain(0f)
+                        },
+                        onTap = { offset ->
+                            val trackHeightPx = size.height.toFloat()
+                            val initialFraction = (1f - offset.y / trackHeightPx).coerceIn(0f, 1f)
+                            currentOnGain(initialFraction * 24f - 12f)
+                        }
+                    )
+                }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectDragGestures(
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            val trackHeightPx = size.height.toFloat()
+                            val newFraction = (1f - change.position.y / trackHeightPx).coerceIn(0f, 1f)
+                            currentOnGain(newFraction * 24f - 12f)
+                        }
+                    )
                 },
             contentAlignment = Alignment.Center,
         ) {
+            val trackHeightDp = maxHeight
+            val thumbHeightDp = 8.dp
+            val usableHeightDp = trackHeightDp - thumbHeightDp
+
             // Zero line
             Box(
                 modifier = Modifier
@@ -290,40 +330,50 @@ private fun EqBandSlider(
                     .background(Color(0xFF30363D))
             )
 
-            // Green fill bar from center to gain
-            if (kotlin.math.abs(gain) > 0.5f) {
+            // Green fill bar from center (fraction = 0.5) to gain
+            if (kotlin.math.abs(gain) > 0.01f && enabled) {
                 val barFraction = kotlin.math.abs(fraction - 0.5f)
-                val totalHeight = with(density) { with(androidx.compose.ui.platform.LocalView.current) { height.toFloat() } * 0.75f }
+                val barHeightDp = usableHeightDp * barFraction
+                val yOffsetDp = if (fraction > 0.5f) {
+                    // Positive gain: starts from center and goes UP
+                    usableHeightDp / 2f - barHeightDp + thumbHeightDp / 2f
+                } else {
+                    // Negative gain: starts from center and goes DOWN
+                    usableHeightDp / 2f + thumbHeightDp / 2f
+                }
+
                 Box(
                     modifier = Modifier
+                        .align(Alignment.TopCenter)
                         .width(4.dp)
-                        .fillMaxHeight(fraction = barFraction)
-                        .offset(y = with(density) {
-                            if (gain > 0) ((totalHeight / 2f - barFraction * totalHeight / 2f)).toDp()
-                            else (totalHeight / 2f).toDp()
-                        })
+                        .height(barHeightDp)
+                        .offset(y = yOffsetDp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(Color(0xFF00C853))
                 )
             }
 
             // Thumb
+            val thumbYOffsetDp = usableHeightDp * (1f - fraction)
             Box(
                 modifier = Modifier
-                    .offset(y = with(density) {
-                        val totalHeight = with(androidx.compose.ui.platform.LocalView.current) { height.toFloat() } * 0.75f
-                        ((0.5f - fraction) * totalHeight).toDp()
-                    })
+                    .align(Alignment.TopCenter)
+                    .offset(y = thumbYOffsetDp)
                     .width(18.dp)
-                    .height(8.dp)
+                    .height(thumbHeightDp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF6E7681))
+                    .background(if (enabled) Color(0xFF6E7681) else Color(0xFF484F58))
             )
         }
 
         Spacer(modifier = Modifier.height(4.dp))
 
         // Frequency label
-        Text(label, color = TextMuted, fontSize = 8.sp)
+        Text(
+            text = label,
+            color = if (enabled) TextSecondary else TextMuted,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
