@@ -1,7 +1,9 @@
 package id.soundbreaker.studio.ui.screens
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -37,6 +39,7 @@ fun MasterEqScreen(
     onPresetSelect: (String) -> Unit,
 ) {
     var eqEnabled by remember { mutableStateOf(true) }
+    var isAnimationPlaying by remember { mutableStateOf(true) }
 
     val quickPresets = listOf("Flat", "Bass", "Vocal", "Bright", "V-Shape")
 
@@ -64,11 +67,26 @@ fun MasterEqScreen(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(if (eqEnabled) Color(0xFF00C853).copy(alpha = 0.2f) else Color(0xFF2A2A2A))
+                            .background(if (eqEnabled) Color(0xFF00C853).copy(alpha = 0.2f) else Color(0xFF21262D))
                             .clickable { eqEnabled = !eqEnabled },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("⏻", color = if (eqEnabled) Color(0xFF00C853) else TextMuted, fontSize = 18.sp)
+                        Canvas(modifier = Modifier.size(16.dp)) {
+                            val color = if (eqEnabled) Color(0xFF00C853) else Color(0xFF8B949E)
+                            drawArc(
+                                color = color,
+                                startAngle = -240f,
+                                sweepAngle = 300f,
+                                useCenter = false,
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                            drawLine(
+                                color = color,
+                                start = Offset(size.width / 2f, 0f),
+                                end = Offset(size.width / 2f, size.height * 0.6f),
+                                strokeWidth = 2.dp.toPx()
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -135,7 +153,12 @@ fun MasterEqScreen(
                  Spacer(modifier = Modifier.height(8.dp))
 
                  // Waveform + EQ Curve visualization
-                 EqCurveVisualization(eqBands = eqBands, enabled = eqEnabled)
+                 EqCurveVisualization(
+                     eqBands = eqBands,
+                     enabled = eqEnabled,
+                     isAnimationPlaying = isAnimationPlaying,
+                     onPlayPauseToggle = { isAnimationPlaying = !isAnimationPlaying }
+                 )
 
                  Spacer(modifier = Modifier.height(12.dp))
 
@@ -188,7 +211,25 @@ fun MasterEqScreen(
 }
 
 @Composable
-private fun EqCurveVisualization(eqBands: List<Float>, enabled: Boolean) {
+private fun EqCurveVisualization(
+    eqBands: List<Float>,
+    enabled: Boolean,
+    isAnimationPlaying: Boolean,
+    onPlayPauseToggle: () -> Unit,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "waveform")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase"
+    )
+
+    val currentPhase = if (isAnimationPlaying && enabled) phase else 0f
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -219,7 +260,7 @@ private fun EqCurveVisualization(eqBands: List<Float>, enabled: Boolean) {
             for (i in 0 until numBars) {
                 val x = (i.toFloat() / numBars) * w
                 val barWidth = w / numBars * 0.7f
-                val amplitude = (Math.sin(i * 0.3).toFloat() * 0.4f + 0.6f) * (h * 0.35f)
+                val amplitude = (Math.sin(i * 0.2 + currentPhase).toFloat() * 0.4f + 0.6f) * (h * 0.35f)
                 drawRect(
                     color = Color(0xFF00C853).copy(alpha = 0.6f),
                     topLeft = Offset(x, centerY - amplitude),
@@ -227,23 +268,48 @@ private fun EqCurveVisualization(eqBands: List<Float>, enabled: Boolean) {
                 )
             }
 
-            // Draw EQ curve line (cyan)
-            val eqPath = Path()
-            val numPoints = 100
-            for (i in 0 until numPoints) {
-                val t = i.toFloat() / numPoints
-                val x = t * w
-                val bandPos = t * (eqBands.size - 1)
-                val bandIdx = bandPos.toInt().coerceIn(0, eqBands.size - 2)
-                val bandFrac = bandPos - bandIdx
-                val g1 = eqBands.getOrElse(bandIdx) { 0f }
-                val g2 = eqBands.getOrElse(bandIdx + 1) { 0f }
-                val gain = g1 + (g2 - g1) * bandFrac
+            // Draw EQ curve line (cyan) as a smooth Catmull-Rom spline
+            val points = ArrayList<Offset>()
+            for (j in 0 until eqBands.size) {
+                val x = (j.toFloat() / (eqBands.size - 1)) * w
+                val gain = eqBands.getOrElse(j) { 0f }
                 val y = centerY - (gain / 12f) * (h * 0.35f)
-
-                if (i == 0) eqPath.moveTo(x, y)
-                else eqPath.lineTo(x, y)
+                points.add(Offset(x, y))
             }
+
+            val eqPath = Path()
+            eqPath.moveTo(points[0].x, points[0].y)
+
+            for (j in 0 until points.size - 1) {
+                val p0 = points[if (j == 0) 0 else j - 1]
+                val p1 = points[j]
+                val p2 = points[j + 1]
+                val p3 = points[if (j + 2 >= points.size) points.size - 1 else j + 2]
+
+                val steps = 20
+                for (step in 1..steps) {
+                    val t = step.toFloat() / steps
+                    val t2 = t * t
+                    val t3 = t2 * t
+
+                    val x = 0.5f * (
+                        (2f * p1.x) +
+                        (-p0.x + p2.x) * t +
+                        (2f * p0.x - 5f * p1.x + 4f * p2.x - p3.x) * t2 +
+                        (-p0.x + 3f * p1.x - 3f * p2.x + p3.x) * t3
+                    )
+
+                    val y = 0.5f * (
+                        (2f * p1.y) +
+                        (-p0.y + p2.y) * t +
+                        (2f * p0.y - 5f * p1.y + 4f * p2.y - p3.y) * t2 +
+                        (-p0.y + 3f * p1.y - 3f * p2.y + p3.y) * t3
+                    )
+
+                    eqPath.lineTo(x, y)
+                }
+            }
+
             drawPath(
                 path = eqPath,
                 color = Color(0xFF00BCD4),
@@ -254,6 +320,33 @@ private fun EqCurveVisualization(eqBands: List<Float>, enabled: Boolean) {
         // Labels
         Text("WAVEFORM + EQ CURVE", color = TextMuted, fontSize = 8.sp, modifier = Modifier.padding(8.dp))
         Text("+12 dB", color = TextMuted, fontSize = 8.sp, modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 8.dp))
+
+        // Play/Pause button at bottom-left of visualization box
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp)
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(if (enabled) Color(0xFF161B22) else Color(0xFF0D1117))
+                .border(
+                    width = 1.dp,
+                    color = if (enabled) Color(0xFF00C853).copy(alpha = 0.5f) else Color(0xFF30363D),
+                    shape = CircleShape
+                )
+                .then(
+                    if (enabled) Modifier.clickable { onPlayPauseToggle() }
+                    else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (isAnimationPlaying) "⏸" else "▶",
+                color = if (enabled) Color(0xFF00C853) else TextMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
