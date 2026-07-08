@@ -563,6 +563,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         put("eqMid", track.eqMid.toDouble())
                         put("eqHigh", track.eqHigh.toDouble())
                         put("regions", regions)
+                        put("effects", JSONArray().apply {
+                            track.effects.forEach { fx ->
+                                put(JSONObject().apply {
+                                    put("id", fx.id)
+                                    put("name", fx.name)
+                                    put("icon", fx.icon)
+                                    put("isEnabled", fx.isEnabled)
+                                    put("params", JSONObject(fx.params.mapValues { it.value.toDouble() }))
+                                })
+                            }
+                        })
                     })
                 }
 
@@ -637,6 +648,28 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         android.util.Log.e("SoundBreaker", "Color parse failed: $colorHex", e)
                         Color(0xFFFF4757)
                     }
+                    val effectsList = mutableListOf<id.soundbreaker.studio.data.Effect>()
+                    val effectsJson = t.optJSONArray("effects")
+                    if (effectsJson != null) {
+                        for (k in 0 until effectsJson.length()) {
+                            val fx = effectsJson.getJSONObject(k)
+                            val paramsJson = fx.optJSONObject("params")
+                            val params = mutableMapOf<String, Float>()
+                            if (paramsJson != null) {
+                                for (key in paramsJson.keys()) {
+                                    params[key] = paramsJson.getDouble(key).toFloat()
+                                }
+                            }
+                            effectsList.add(id.soundbreaker.studio.data.Effect(
+                                id = fx.getInt("id"),
+                                name = fx.getString("name"),
+                                icon = fx.optString("icon", "fx"),
+                                isEnabled = fx.optBoolean("isEnabled", true),
+                                params = params
+                            ))
+                        }
+                    }
+
                     newTracks.add(Track(trackId, t.getString("name"), type, color,
                         t.getDouble("volume").toFloat(), t.getDouble("pan").toFloat(),
                         inputSource = t.optString("inputSource", "Mic"),
@@ -645,7 +678,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         eqLow = t.optDouble("eqLow", 0.0).toFloat(),
                         eqMid = t.optDouble("eqMid", 0.0).toFloat(),
                         eqHigh = t.optDouble("eqHigh", 0.0).toFloat(),
-                        regions = regions))
+                        regions = regions,
+                        effects = effectsList))
 
                     val audioFileName = t.optString("audioFile", "")
                     if (audioFileName.isNotEmpty()) {
