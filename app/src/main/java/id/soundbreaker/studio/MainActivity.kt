@@ -39,6 +39,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Request storage permission on first launch
+        requestStoragePermission { }
+
         setContent {
             SoundBreakerTheme {
                 val viewModel: StudioViewModel = viewModel()

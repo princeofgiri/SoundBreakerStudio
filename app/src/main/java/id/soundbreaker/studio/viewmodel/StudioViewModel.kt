@@ -155,47 +155,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private fun getFilteredPcmList(): List<ShortArray> {
         val tracks = _project.value.tracks
         val hasSolo = tracks.any { it.isSolo }
-        val bpm = _project.value.bpm
-        val msPerBar = (60_000.0 / bpm) * 4
-        val framesPerBar = ((msPerBar / 1000.0) * AudioEngine.SAMPLE_RATE).toInt()
-
-        // Find the maximum end position of any region to know how long the track buffers need to be
-        val maxEndBar = tracks.flatMap { it.regions }.maxOfOrNull { it.startBar + it.widthBars } ?: 1f
-        val totalFrames = (maxEndBar * framesPerBar).toInt()
-        val totalShorts = totalFrames * 2 // stereo
-
         return tracks.map { track ->
+            val pcm = _trackPcmData[track.id] ?: ShortArray(0)
+            if (pcm.isEmpty()) return@map pcm
             val shouldPlay = if (hasSolo) track.isSolo else !track.isMuted
-            val rawPcm = _trackPcmData[track.id] ?: ShortArray(0)
-            if (!shouldPlay || rawPcm.isEmpty() || track.regions.isEmpty()) {
-                return@map ShortArray(0)
-            }
-
-            // Create a silent buffer for the track
-            val trackBuffer = ShortArray(totalShorts)
-
-            // Place each region into the track buffer
-            for (region in track.regions) {
-                val regionStartFrame = ((region.startBar - 1f) * framesPerBar).toInt().coerceAtLeast(0)
-                val regionWidthFrames = (region.widthBars * framesPerBar).toInt()
-                val audioOffsetFrames = (region.audioOffsetBars * framesPerBar).toInt().coerceAtLeast(0)
-
-                // Copy samples from rawPcm to trackBuffer at the correct offset
-                for (f in 0 until regionWidthFrames) {
-                    val targetFrame = regionStartFrame + f
-                    if (targetFrame >= totalFrames) break
-
-                    val sourceFrame = audioOffsetFrames + f
-                    val sourceIndex = sourceFrame * 2
-                    val targetIndex = targetFrame * 2
-
-                    if (sourceIndex + 1 < rawPcm.size) {
-                        trackBuffer[targetIndex] = rawPcm[sourceIndex]
-                        trackBuffer[targetIndex + 1] = rawPcm[sourceIndex + 1]
-                    }
-                }
-            }
-            trackBuffer
+            if (shouldPlay) pcm else ShortArray(0)
         }
     }
 

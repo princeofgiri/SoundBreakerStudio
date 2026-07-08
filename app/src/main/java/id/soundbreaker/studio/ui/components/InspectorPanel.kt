@@ -128,14 +128,6 @@ fun InspectorPanel(
             EqSlider("High", eqHigh, eqHighValue, AccentBlue) { onEqChange(eqLowValue, eqMidValue, it) }
         }
 
-        // Effects Chain
-        InspectorSection("Effects Chain") {
-            effects.forEach { (name, enabled) ->
-                EffectSlot(name, enabled)
-            }
-            EffectSlot("+ Add Effect", false, isAddButton = true)
-        }
-
         Spacer(modifier = Modifier.height(16.dp))
 
         // Delete Track Button
