@@ -148,11 +148,13 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onSetParam = { trackId, fxId, key, value -> viewModel.setEffectParam(trackId, fxId, key, value) },
                 )
             } else if (activeTab == "Master EQ") {
+                val masterAmp = trackAmplitudes.maxOrNull() ?: 0f
                 MasterEqScreen(
                     eqBands = project.masterEq,
                     currentPreset = project.masterEqPreset,
                     onBandChange = { index, gain -> viewModel.setMasterEqBand(index, gain) },
                     onPresetSelect = { viewModel.setMasterEqPreset(it) },
+                    playbackAmplitude = masterAmp,
                 )
             } else {
             // Track List

@@ -37,6 +37,7 @@ fun MasterEqScreen(
     currentPreset: String,
     onBandChange: (Int, Float) -> Unit,
     onPresetSelect: (String) -> Unit,
+    playbackAmplitude: Float = 0f,
 ) {
     var eqEnabled by remember { mutableStateOf(true) }
     var isAnimationPlaying by remember { mutableStateOf(true) }
@@ -152,34 +153,50 @@ fun MasterEqScreen(
 
                  Spacer(modifier = Modifier.height(8.dp))
 
-                 // Waveform + EQ Curve visualization
-                 EqCurveVisualization(
-                     eqBands = eqBands,
-                     enabled = eqEnabled,
-                     isAnimationPlaying = isAnimationPlaying,
-                     onPlayPauseToggle = { isAnimationPlaying = !isAnimationPlaying }
-                 )
+                  // Waveform + EQ Curve visualization
+                  EqCurveVisualization(
+                      eqBands = eqBands,
+                      enabled = eqEnabled,
+                      isAnimationPlaying = isAnimationPlaying,
+                      onPlayPauseToggle = { isAnimationPlaying = !isAnimationPlaying },
+                      playbackAmplitude = playbackAmplitude
+                  )
 
                  Spacer(modifier = Modifier.height(12.dp))
 
-                 // EQ Band Sliders
-                 Row(
-                     modifier = Modifier
-                         .fillMaxWidth()
-                         .weight(1f),
-                     horizontalArrangement = Arrangement.SpaceEvenly,
-                     verticalAlignment = Alignment.Top,
-                 ) {
-                     MasterEqPresets.bandLabels.forEachIndexed { index, label ->
-                         val gain = eqBands.getOrElse(index) { 0f }
-                         EqBandSlider(
-                             label = label,
-                             gain = gain,
-                             onGainChange = { onBandChange(index, it) },
-                             enabled = eqEnabled,
-                         )
-                     }
-                 }
+                  // EQ Band Sliders container (dark, bordered card!)
+                  Box(
+                      modifier = Modifier
+                          .fillMaxWidth()
+                          .weight(1f)
+                          .clip(RoundedCornerShape(8.dp))
+                          .background(Color(0xFF0D1117))
+                          .border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
+                          .padding(horizontal = 16.dp, vertical = 12.dp)
+                  ) {
+                      Row(
+                          modifier = Modifier.fillMaxSize(),
+                          horizontalArrangement = Arrangement.SpaceEvenly,
+                          verticalAlignment = Alignment.CenterVertically,
+                      ) {
+                          MasterEqPresets.bandLabels.forEachIndexed { index, label ->
+                              Box(
+                                  modifier = Modifier
+                                      .weight(1f)
+                                      .fillMaxHeight(),
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                  val gain = eqBands.getOrElse(index) { 0f }
+                                  EqBandSlider(
+                                      label = label,
+                                      gain = gain,
+                                      onGainChange = { onBandChange(index, it) },
+                                      enabled = eqEnabled,
+                                  )
+                              }
+                          }
+                      }
+                  }
 
                  Spacer(modifier = Modifier.height(8.dp))
 
@@ -216,6 +233,7 @@ private fun EqCurveVisualization(
     enabled: Boolean,
     isAnimationPlaying: Boolean,
     onPlayPauseToggle: () -> Unit,
+    playbackAmplitude: Float,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "waveform")
     val phase by infiniteTransition.animateFloat(
@@ -237,18 +255,34 @@ private fun EqCurveVisualization(
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF0D1117))
     ) {
+    key(eqBands) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
             val centerY = h / 2
 
-            // Draw grid lines
+            // Draw grid lines (horizontal)
             for (i in 0..4) {
                 val y = (i / 4f) * h
                 drawLine(
                     color = Color(0xFF21262D),
                     start = Offset(0f, y),
                     end = Offset(w, y),
+                    strokeWidth = 1f,
+                )
+            }
+
+            // Draw grid lines (vertical, aligned with each slider!)
+            val p = 16.dp.toPx() // horizontal padding to match faders
+            val wActive = w - 2 * p
+            val c = wActive / 10f
+
+            for (j in 0 until 10) {
+                val x = p + (j + 0.5f) * c
+                drawLine(
+                    color = Color(0xFF21262D),
+                    start = Offset(x, 0f),
+                    end = Offset(x, h),
                     strokeWidth = 1f,
                 )
             }
@@ -260,7 +294,10 @@ private fun EqCurveVisualization(
             for (i in 0 until numBars) {
                 val x = (i.toFloat() / numBars) * w
                 val barWidth = w / numBars * 0.7f
-                val amplitude = (Math.sin(i * 0.2 + currentPhase).toFloat() * 0.4f + 0.6f) * (h * 0.35f)
+                // Sync amplitude with audio playback level!
+                val rawAmp = if (isAnimationPlaying) playbackAmplitude else 0.02f
+                val ampFactor = if (isAnimationPlaying) (rawAmp * 0.8f + 0.15f) else 0.05f
+                val amplitude = (Math.sin(i * 0.2 + currentPhase).toFloat() * 0.4f + 0.6f) * (h * 0.35f) * ampFactor
                 drawRect(
                     color = Color(0xFF00C853).copy(alpha = 0.6f),
                     topLeft = Offset(x, centerY - amplitude),
@@ -271,20 +308,26 @@ private fun EqCurveVisualization(
             // Draw EQ curve line (cyan) as a smooth Catmull-Rom spline
             val points = ArrayList<Offset>()
             for (j in 0 until eqBands.size) {
-                val x = (j.toFloat() / (eqBands.size - 1)) * w
+                val x = p + (j + 0.5f) * c
                 val gain = eqBands.getOrElse(j) { 0f }
                 val y = centerY - (gain / 12f) * (h * 0.35f)
                 points.add(Offset(x, y))
             }
 
-            val eqPath = Path()
-            eqPath.moveTo(points[0].x, points[0].y)
+            // Create extended points to draw the spline to left and right edges
+            val splinePoints = ArrayList<Offset>()
+            splinePoints.add(Offset(0f, points[0].y))
+            splinePoints.addAll(points)
+            splinePoints.add(Offset(w, points.last().y))
 
-            for (j in 0 until points.size - 1) {
-                val p0 = points[if (j == 0) 0 else j - 1]
-                val p1 = points[j]
-                val p2 = points[j + 1]
-                val p3 = points[if (j + 2 >= points.size) points.size - 1 else j + 2]
+            val eqPath = Path()
+            eqPath.moveTo(splinePoints[0].x, splinePoints[0].y)
+
+            for (j in 0 until splinePoints.size - 1) {
+                val p0 = splinePoints[if (j == 0) 0 else j - 1]
+                val p1 = splinePoints[j]
+                val p2 = splinePoints[j + 1]
+                val p3 = splinePoints[if (j + 2 >= splinePoints.size) splinePoints.size - 1 else j + 2]
 
                 val steps = 20
                 for (step in 1..steps) {
@@ -316,6 +359,7 @@ private fun EqCurveVisualization(
                 style = Stroke(width = 2.dp.toPx()),
             )
         }
+    }
 
         // Labels
         Text("WAVEFORM + EQ CURVE", color = TextMuted, fontSize = 8.sp, modifier = Modifier.padding(8.dp))
@@ -378,13 +422,11 @@ private fun EqBandSlider(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Slider track container
+        // Slider track container (width 32.dp to fit the thumb without clipping)
         BoxWithConstraints(
             modifier = Modifier
-                .width(24.dp)
+                .width(32.dp)
                 .weight(1f)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFF21262D))
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
                     detectTapGestures(
@@ -412,13 +454,22 @@ private fun EqBandSlider(
             contentAlignment = Alignment.Center,
         ) {
             val trackHeightDp = maxHeight
-            val thumbHeightDp = 8.dp
+            val thumbHeightDp = 16.dp
             val usableHeightDp = trackHeightDp - thumbHeightDp
 
-            // Zero line
+            // Track background (vertical bar, width 12.dp)
             Box(
                 modifier = Modifier
-                    .width(16.dp)
+                    .fillMaxHeight()
+                    .width(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF21262D))
+            )
+
+            // Zero line indicator
+            Box(
+                modifier = Modifier
+                    .width(20.dp)
                     .height(1.dp)
                     .background(Color(0xFF30363D))
             )
@@ -438,25 +489,38 @@ private fun EqBandSlider(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .width(4.dp)
+                        .width(6.dp)
                         .height(barHeightDp)
                         .offset(y = yOffsetDp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(RoundedCornerShape(3.dp))
                         .background(Color(0xFF00C853))
                 )
             }
 
-            // Thumb
+            // Thumb (horizontal capsule with border and middle green line)
             val thumbYOffsetDp = usableHeightDp * (1f - fraction)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .offset(y = thumbYOffsetDp)
-                    .width(18.dp)
-                    .height(thumbHeightDp)
+                    .width(32.dp)
+                    .height(16.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(if (enabled) Color(0xFF6E7681) else Color(0xFF484F58))
-            )
+                    .background(if (enabled) Color(0xFF161B22) else Color(0xFF0D1117))
+                    .border(
+                        width = 1.dp,
+                        color = if (enabled) Color(0xFF30363D) else Color(0xFF21262D),
+                        shape = RoundedCornerShape(4.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(12.dp)
+                        .height(2.dp)
+                        .background(if (enabled) Color(0xFF00C853) else Color(0xFF484F58))
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
