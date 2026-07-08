@@ -1,6 +1,7 @@
 package id.soundbreaker.studio.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Environment
 import android.util.Log
@@ -97,6 +98,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         refreshAvailableInputs()
         refreshAvailableOutputs()
+        val prefs = getApplication<Application>().getSharedPreferences("studio_prefs", Context.MODE_PRIVATE)
+        val savedOutput = prefs.getString("output_device", null)
+        val defaultOutput = savedOutput ?: _availableOutputs.value.firstOrNull() ?: "Speaker"
+        setOutputDevice(defaultOutput)
     }
 
     fun hasRecordPermission(): Boolean {
@@ -257,6 +262,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setOutputDevice(deviceName: String) {
         _outputDevice.value = deviceName
         audioEngine.setOutputDevice(getApplication(), deviceName)
+        val prefs = getApplication<Application>().getSharedPreferences("studio_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("output_device", deviceName).apply()
     }
     fun setTrackEq(trackId: Int, low: Float, mid: Float, high: Float) {
         updateTrack(trackId) { it.copy(eqLow = low, eqMid = mid, eqHigh = high) }
