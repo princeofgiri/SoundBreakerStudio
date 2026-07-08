@@ -53,6 +53,7 @@ class AudioEngine {
     @Volatile private var masterPan = 0.5f
     private var eqFilters: Array<Array<BiquadFilter>> = emptyArray()
     private val effectsChain = TrackEffectsChain(SAMPLE_RATE)
+    private val masterEq = MasterEqProcessor(SAMPLE_RATE)
     private var preferredOutputDevice: String = "Speaker"
     private var preferredOutputDeviceInfo: AudioDeviceInfo? = null
     private var playbackPosition = 0
@@ -213,6 +214,9 @@ class AudioEngine {
                     mixClickTrack(stereoOutput, framesToRead, playbackPosition, state.bpm)
                 }
 
+                // Apply master EQ
+                masterEq.processStereo(stereoOutput, framesToRead)
+
                 // Apply master volume and pan
                 val mv = masterVolume
                 val mp = masterPan
@@ -313,6 +317,10 @@ class AudioEngine {
 
     fun setMasterPan(pan: Float) {
         masterPan = pan
+    }
+
+    fun setMasterEq(bands: List<Float>) {
+        masterEq.setGains(bands)
     }
 
     fun getAvailableInputs(context: Context): List<String> {

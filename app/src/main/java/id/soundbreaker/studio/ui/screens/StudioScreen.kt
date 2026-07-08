@@ -147,6 +147,13 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onToggleEffect = { trackId, fxId -> viewModel.toggleEffect(trackId, fxId) },
                     onSetParam = { trackId, fxId, key, value -> viewModel.setEffectParam(trackId, fxId, key, value) },
                 )
+            } else if (activeTab == "Master EQ") {
+                MasterEqScreen(
+                    eqBands = project.masterEq,
+                    currentPreset = project.masterEqPreset,
+                    onBandChange = { index, gain -> viewModel.setMasterEqBand(index, gain) },
+                    onPresetSelect = { viewModel.setMasterEqPreset(it) },
+                )
             } else {
             // Track List
             Column(modifier = Modifier.width(280.dp).fillMaxHeight().background(DarkSurface)) {

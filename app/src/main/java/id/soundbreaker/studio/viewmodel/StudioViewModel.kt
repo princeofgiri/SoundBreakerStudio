@@ -279,6 +279,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _masterPan.value = pan.coerceIn(0f, 1f)
         audioEngine.setMasterPan(_masterPan.value)
     }
+    fun setMasterEqBand(index: Int, gain: Float) {
+        val newBands = _project.value.masterEq.toMutableList()
+        if (index in newBands.indices) newBands[index] = gain.coerceIn(-12f, 12f)
+        _project.value = _project.value.copy(masterEq = newBands, masterEqPreset = "Custom")
+        audioEngine.setMasterEq(newBands)
+    }
+    fun setMasterEqPreset(presetName: String) {
+        val bands = id.soundbreaker.studio.data.MasterEqPresets.presets[presetName] ?: List(10) { 0f }
+        _project.value = _project.value.copy(masterEq = bands, masterEqPreset = presetName)
+        audioEngine.setMasterEq(bands)
+    }
     fun addEffect(trackId: Int, effectType: id.soundbreaker.studio.data.EffectType) {
         val effectId = (System.currentTimeMillis() % 100000).toInt()
         val fx = id.soundbreaker.studio.data.Effect(
@@ -561,6 +572,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     put("isLooping", _project.value.isLooping)
                     put("isClickOn", _project.value.isClickOn)
                     put("tracks", JSONArray(trackDataList))
+                    put("masterEq", JSONArray(_project.value.masterEq.map { it.toDouble() }))
+                    put("masterEqPreset", _project.value.masterEqPreset)
                 }
 
                 File(dir, "project.json").writeText(root.toString(2))
@@ -583,6 +596,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val bpm = root.optInt("bpm", 120)
                 val isLooping = root.optBoolean("isLooping", true)
                 val isClickOn = root.optBoolean("isClickOn", false)
+                val masterEqPreset = root.optString("masterEqPreset", "Flat")
+                val masterEqArray = root.optJSONArray("masterEq")
+                val masterEq = if (masterEqArray != null) {
+                    (0 until masterEqArray.length()).map { masterEqArray.getDouble(it).toFloat() }
+                } else List(10) { 0f }
                 val tracksJson = root.getJSONArray("tracks")
 
                 val newTracks = mutableListOf<Track>()
@@ -681,7 +699,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             } else track
                         }
 
-                        _project.value = _project.value.copy(name = name, bpm = bpm, isLooping = isLooping, isClickOn = isClickOn, tracks = tracksWithWaveform)
+                        _project.value = _project.value.copy(name = name, bpm = bpm, isLooping = isLooping, isClickOn = isClickOn, tracks = tracksWithWaveform, masterEq = masterEq, masterEqPreset = masterEqPreset)
+                        audioEngine.setMasterEq(masterEq)
                         _trackPcmData.clear()
                         _trackPcmData.putAll(newPcm)
                         regionIdCounter = tracksWithWaveform.maxOfOrNull { t -> t.regions.maxOfOrNull { it.id } ?: 0 } ?: 0

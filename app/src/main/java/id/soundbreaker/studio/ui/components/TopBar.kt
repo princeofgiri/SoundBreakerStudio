@@ -57,7 +57,7 @@ fun TopBar(
         Spacer(modifier = Modifier.weight(1f))
 
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf("Edit", "Mix", "FX").forEach { tab ->
+            listOf("Edit", "Mix", "FX", "Master EQ").forEach { tab ->
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
