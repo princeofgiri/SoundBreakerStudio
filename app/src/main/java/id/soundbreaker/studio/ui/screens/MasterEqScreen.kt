@@ -39,8 +39,9 @@ fun MasterEqScreen(
     onPresetSelect: (String) -> Unit,
     playbackAmplitude: Float = 0f,
     isPlaying: Boolean = false,
+    eqEnabled: Boolean = true,
+    onEnabledChange: (Boolean) -> Unit = {},
 ) {
-    var eqEnabled by remember { mutableStateOf(true) }
     var isAnimationPlaying by remember { mutableStateOf(true) }
 
     val quickPresets = listOf("Flat", "Bass", "Vocal", "Bright", "V-Shape")
@@ -70,7 +71,7 @@ fun MasterEqScreen(
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(if (eqEnabled) Color(0xFF00C853).copy(alpha = 0.2f) else Color(0xFF21262D))
-                            .clickable { eqEnabled = !eqEnabled },
+                            .clickable { onEnabledChange(!eqEnabled) },
                         contentAlignment = Alignment.Center,
                     ) {
                         Canvas(modifier = Modifier.size(16.dp)) {
@@ -162,6 +163,9 @@ fun MasterEqScreen(
                       onPlayPauseToggle = { isAnimationPlaying = !isAnimationPlaying },
                       playbackAmplitude = playbackAmplitude,
                       isPlaying = isPlaying,
+                      modifier = Modifier
+                          .fillMaxWidth()
+                          .weight(0.4f)
                   )
 
                  Spacer(modifier = Modifier.height(12.dp))
@@ -170,7 +174,7 @@ fun MasterEqScreen(
                   Box(
                       modifier = Modifier
                           .fillMaxWidth()
-                          .weight(1f)
+                          .weight(0.6f)
                           .clip(RoundedCornerShape(8.dp))
                           .background(Color(0xFF0D1117))
                           .border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
@@ -237,6 +241,7 @@ private fun EqCurveVisualization(
     onPlayPauseToggle: () -> Unit,
     playbackAmplitude: Float,
     isPlaying: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "waveform")
     val phase by infiniteTransition.animateFloat(
@@ -252,9 +257,7 @@ private fun EqCurveVisualization(
     val currentPhase = if (isAnimationPlaying && enabled && isPlaying) phase else 0f
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(160.dp)
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF0D1117))
             .border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
@@ -292,8 +295,8 @@ private fun EqCurveVisualization(
             }
 
             // Draw waveform bars (green)
-            val numBars = 120
-            val barWidth = w / numBars * 0.6f
+            val numBars = 180
+            val barWidth = w / numBars * 0.45f
             val rawAmp = if (isAnimationPlaying && isPlaying) playbackAmplitude else 0f
             val ampFactor = if (isAnimationPlaying && isPlaying) (rawAmp.coerceIn(0f, 1f) * 0.8f + 0.2f) else 0f
 

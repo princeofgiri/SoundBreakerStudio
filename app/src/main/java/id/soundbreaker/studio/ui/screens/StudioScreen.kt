@@ -48,6 +48,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val activeTab by viewModel.activeTab.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
+    val isPaused by viewModel.isPaused.collectAsState()
     val message by viewModel.message.collectAsState()
     val selectedRegionId by viewModel.selectedRegionId.collectAsState()
     val isInspectorVisible by viewModel.isInspectorVisible.collectAsState()
@@ -155,7 +156,9 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onBandChange = { index, gain -> viewModel.setMasterEqBand(index, gain) },
                     onPresetSelect = { viewModel.setMasterEqPreset(it) },
                     playbackAmplitude = masterAmp,
-                    isPlaying = isPlaying,
+                    isPlaying = isPlaying && !isPaused,
+                    eqEnabled = project.masterEqEnabled,
+                    onEnabledChange = { viewModel.setMasterEqEnabled(it) },
                 )
             } else {
             // Track List

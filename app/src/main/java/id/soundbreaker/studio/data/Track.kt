@@ -73,6 +73,7 @@ data class ProjectState(
     val tracks: List<Track> = emptyList(),
     val masterEq: List<Float> = List(10) { 0f }, // 10 bands: 31,62,125,250,500,1k,2k,4k,8k,16k Hz
     val masterEqPreset: String = "Flat",
+    val masterEqEnabled: Boolean = true,
 )
 
 fun defaultTracks(): List<Track> = listOf(

@@ -290,6 +290,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _project.value = _project.value.copy(masterEq = bands, masterEqPreset = presetName)
         audioEngine.setMasterEq(bands)
     }
+    fun setMasterEqEnabled(enabled: Boolean) {
+        _project.value = _project.value.copy(masterEqEnabled = enabled)
+        audioEngine.setMasterEqEnabled(enabled)
+    }
     fun addEffect(trackId: Int, effectType: id.soundbreaker.studio.data.EffectType) {
         val effectId = (System.currentTimeMillis() % 100000).toInt()
         val fx = id.soundbreaker.studio.data.Effect(
@@ -585,6 +589,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     put("tracks", JSONArray(trackDataList))
                     put("masterEq", JSONArray(_project.value.masterEq.map { it.toDouble() }))
                     put("masterEqPreset", _project.value.masterEqPreset)
+                    put("masterEqEnabled", _project.value.masterEqEnabled)
                 }
 
                 File(dir, "project.json").writeText(root.toString(2))
@@ -608,6 +613,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val isLooping = root.optBoolean("isLooping", true)
                 val isClickOn = root.optBoolean("isClickOn", false)
                 val masterEqPreset = root.optString("masterEqPreset", "Flat")
+                val masterEqEnabled = root.optBoolean("masterEqEnabled", true)
                 val masterEqArray = root.optJSONArray("masterEq")
                 val masterEq = if (masterEqArray != null) {
                     (0 until masterEqArray.length()).map { masterEqArray.getDouble(it).toFloat() }
@@ -733,8 +739,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             } else track
                         }
 
-                        _project.value = _project.value.copy(name = name, bpm = bpm, isLooping = isLooping, isClickOn = isClickOn, tracks = tracksWithWaveform, masterEq = masterEq, masterEqPreset = masterEqPreset)
+                        _project.value = _project.value.copy(name = name, bpm = bpm, isLooping = isLooping, isClickOn = isClickOn, tracks = tracksWithWaveform, masterEq = masterEq, masterEqPreset = masterEqPreset, masterEqEnabled = masterEqEnabled)
                         audioEngine.setMasterEq(masterEq)
+                        audioEngine.setMasterEqEnabled(masterEqEnabled)
                         _trackPcmData.clear()
                         _trackPcmData.putAll(newPcm)
                         regionIdCounter = tracksWithWaveform.maxOfOrNull { t -> t.regions.maxOfOrNull { it.id } ?: 0 } ?: 0
