@@ -48,6 +48,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val activeTab by viewModel.activeTab.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
+    val isPaused by viewModel.isPaused.collectAsState()
     val message by viewModel.message.collectAsState()
     val selectedRegionId by viewModel.selectedRegionId.collectAsState()
     val isInspectorVisible by viewModel.isInspectorVisible.collectAsState()
@@ -148,11 +149,19 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onSetParam = { trackId, fxId, key, value -> viewModel.setEffectParam(trackId, fxId, key, value) },
                 )
             } else if (activeTab == "Master EQ") {
+                val masterAmp = trackAmplitudes.maxOrNull() ?: 0f
                 MasterEqScreen(
                     eqBands = project.masterEq,
                     currentPreset = project.masterEqPreset,
                     onBandChange = { index, gain -> viewModel.setMasterEqBand(index, gain) },
                     onPresetSelect = { viewModel.setMasterEqPreset(it) },
+                    playbackAmplitude = masterAmp,
+                    isPlaying = isPlaying && !isPaused,
+                    eqEnabled = project.masterEqEnabled,
+                    onEnabledChange = { viewModel.setMasterEqEnabled(it) },
+                    customPresets = project.customPresets,
+                    onSavePreset = { name, bands -> viewModel.saveCustomPreset(name, bands) },
+                    onDeletePreset = { viewModel.deleteCustomPreset(it) },
                 )
             } else {
             // Track List
@@ -283,7 +292,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 TransportBar(
                     bpm = project.bpm, timeSignature = "${project.timeSignatureNumerator}/${project.timeSignatureDenominator}",
-                    isPlaying = isPlaying, isRecording = isRecording, isLooping = project.isLooping, isClickOn = project.isClickOn,
+                    isPlaying = isPlaying && !isPaused, isRecording = isRecording, isLooping = project.isLooping, isClickOn = project.isClickOn,
                     onPlay = { viewModel.togglePlayback() }, onStop = { viewModel.stopPlayback() },
                     onRecord = { (context as? MainActivity)?.requestRecordPermission { viewModel.toggleRecord() } },
                     onGoToStart = { viewModel.goToStart() }, onGoToEnd = { viewModel.goToEnd() },
