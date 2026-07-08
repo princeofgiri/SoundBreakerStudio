@@ -13,6 +13,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,8 +47,14 @@ fun MasterEqScreen(
     isPlaying: Boolean = false,
     eqEnabled: Boolean = true,
     onEnabledChange: (Boolean) -> Unit = {},
+    customPresets: Map<String, List<Float>> = emptyMap(),
+    onSavePreset: (String, List<Float>) -> Unit = { _, _ -> },
+    onDeletePreset: (String) -> Unit = {},
 ) {
     var isAnimationPlaying by remember { mutableStateOf(true) }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var newPresetName by remember { mutableStateOf("") }
 
     val quickPresets = listOf("Flat", "Bass", "Vocal", "Bright", "V-Shape")
 
@@ -101,56 +113,138 @@ fun MasterEqScreen(
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                     // Preset chips
-                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                         quickPresets.forEach { name ->
-                             val isSelected = name == currentPreset
-                             Box(
-                                 modifier = Modifier
-                                     .clip(RoundedCornerShape(16.dp))
-                                     .background(
-                                         when {
-                                             !eqEnabled -> Color(0xFF161B22)
-                                             isSelected -> Color(0xFF00C853).copy(alpha = 0.3f)
-                                             else -> Color(0xFF21262D)
-                                         }
-                                     )
-                                     .then(
-                                         if (eqEnabled) Modifier.clickable { onPresetSelect(name) }
-                                         else Modifier
-                                     )
-                                     .padding(horizontal = 12.dp, vertical = 6.dp),
-                             ) {
-                                 Text(
-                                     text = name,
-                                     color = when {
-                                         !eqEnabled -> TextMuted
-                                         isSelected -> Color(0xFF00C853)
-                                         else -> TextSecondary
-                                     },
-                                     fontSize = 10.sp,
-                                     fontWeight = FontWeight.Medium,
-                                 )
-                             }
-                         }
-                     }
+                    // Dropdown Preset Selector
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (eqEnabled) Color(0xFF21262D) else Color(0xFF161B22))
+                                .border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
+                                .then(
+                                    if (eqEnabled) Modifier.clickable { dropdownExpanded = true }
+                                    else Modifier
+                                )
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Preset: $currentPreset",
+                                    color = if (eqEnabled) TextPrimary else TextMuted,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "▼",
+                                    color = if (eqEnabled) TextSecondary else TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
 
-                     Spacer(modifier = Modifier.width(8.dp))
+                        DropdownMenu(
+                            expanded = dropdownExpanded && eqEnabled,
+                            onDismissRequest = { dropdownExpanded = false },
+                            modifier = Modifier.background(Color(0xFF161B22)).border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
+                        ) {
+                            val builtIn = listOf("Flat", "Bass", "Vocal", "Bright", "V-Shape", "Pop", "Rock", "Country", "Punk", "Jazz", "Classical", "Electronic", "Hip-Hop", "Acoustic", "Warm")
+                             
+                            Text(
+                                text = "BUILT-IN PRESETS",
+                                color = TextMuted,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                            builtIn.forEach { name ->
+                                DropdownMenuItem(
+                                    text = { Text(name, color = if (name == currentPreset) Color(0xFF00C853) else TextPrimary, fontSize = 13.sp) },
+                                    onClick = {
+                                        onPresetSelect(name)
+                                        dropdownExpanded = false
+                                    }
+                                )
+                            }
 
-                     // Reset button
-                     Box(
-                         modifier = Modifier
-                             .size(32.dp)
-                             .clip(CircleShape)
-                             .background(if (eqEnabled) Color(0xFF21262D) else Color(0xFF161B22))
-                             .then(
-                                 if (eqEnabled) Modifier.clickable { onPresetSelect("Flat") }
-                                 else Modifier
-                             ),
-                         contentAlignment = Alignment.Center,
-                     ) {
-                         Text("↺", color = if (eqEnabled) TextSecondary else TextMuted, fontSize = 16.sp)
-                     }
+                            if (customPresets.isNotEmpty()) {
+                                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF30363D)))
+                                Text(
+                                    text = "CUSTOM PRESETS",
+                                    color = TextMuted,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                                customPresets.keys.forEach { name ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(name, color = if (name == currentPreset) Color(0xFF00C853) else TextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                                Text(
+                                                    text = "✕",
+                                                    color = AccentRed,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier
+                                                        .clickable {
+                                                            onDeletePreset(name)
+                                                        }
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            onPresetSelect(name)
+                                            dropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Save Preset Button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(if (eqEnabled) Color(0xFF21262D) else Color(0xFF161B22))
+                            .border(1.dp, Color(0xFF30363D), CircleShape)
+                            .then(
+                                if (eqEnabled) Modifier.clickable { showSaveDialog = true }
+                                else Modifier
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("+", color = if (eqEnabled) Color(0xFF00C853) else TextMuted, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Reset button
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(if (eqEnabled) Color(0xFF21262D) else Color(0xFF161B22))
+                            .border(1.dp, Color(0xFF30363D), CircleShape)
+                            .then(
+                                if (eqEnabled) Modifier.clickable { onPresetSelect("Flat") }
+                                else Modifier
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("↺", color = if (eqEnabled) TextSecondary else TextMuted, fontSize = 16.sp)
+                    }
                  }
 
                  Spacer(modifier = Modifier.height(8.dp))
@@ -230,6 +324,52 @@ fun MasterEqScreen(
                  }
             }
         }
+    }
+
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            containerColor = Color(0xFF1A1A1A),
+            titleContentColor = TextPrimary,
+            title = { Text("Save Preset Baru", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column {
+                    Text("Masukkan nama untuk preset custom Anda:", color = TextSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newPresetName,
+                        onValueChange = { newPresetName = it },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = Color(0xFF00C853),
+                            unfocusedBorderColor = DarkBorderLight,
+                            cursorColor = Color(0xFF00C853)
+                        ),
+                        placeholder = { Text("Nama Preset", color = TextMuted) }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newPresetName.isNotBlank()) {
+                            onSavePreset(newPresetName.trim(), eqBands)
+                            newPresetName = ""
+                            showSaveDialog = false
+                        }
+                    }
+                ) {
+                    Text("Simpan", color = Color(0xFF00C853), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) {
+                    Text("Batal", color = TextMuted)
+                }
+            }
+        )
     }
 }
 

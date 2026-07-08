@@ -159,6 +159,9 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     isPlaying = isPlaying && !isPaused,
                     eqEnabled = project.masterEqEnabled,
                     onEnabledChange = { viewModel.setMasterEqEnabled(it) },
+                    customPresets = project.customPresets,
+                    onSavePreset = { name, bands -> viewModel.saveCustomPreset(name, bands) },
+                    onDeletePreset = { viewModel.deleteCustomPreset(it) },
                 )
             } else {
             // Track List
@@ -289,7 +292,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 TransportBar(
                     bpm = project.bpm, timeSignature = "${project.timeSignatureNumerator}/${project.timeSignatureDenominator}",
-                    isPlaying = isPlaying, isRecording = isRecording, isLooping = project.isLooping, isClickOn = project.isClickOn,
+                    isPlaying = isPlaying && !isPaused, isRecording = isRecording, isLooping = project.isLooping, isClickOn = project.isClickOn,
                     onPlay = { viewModel.togglePlayback() }, onStop = { viewModel.stopPlayback() },
                     onRecord = { (context as? MainActivity)?.requestRecordPermission { viewModel.toggleRecord() } },
                     onGoToStart = { viewModel.goToStart() }, onGoToEnd = { viewModel.goToEnd() },

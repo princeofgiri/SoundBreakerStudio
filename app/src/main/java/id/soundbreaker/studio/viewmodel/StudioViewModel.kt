@@ -286,13 +286,29 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         audioEngine.setMasterEq(newBands)
     }
     fun setMasterEqPreset(presetName: String) {
-        val bands = id.soundbreaker.studio.data.MasterEqPresets.presets[presetName] ?: List(10) { 0f }
+        val bands = _project.value.customPresets[presetName]
+            ?: id.soundbreaker.studio.data.MasterEqPresets.presets[presetName]
+            ?: List(10) { 0f }
         _project.value = _project.value.copy(masterEq = bands, masterEqPreset = presetName)
         audioEngine.setMasterEq(bands)
     }
     fun setMasterEqEnabled(enabled: Boolean) {
         _project.value = _project.value.copy(masterEqEnabled = enabled)
         audioEngine.setMasterEqEnabled(enabled)
+    }
+    fun saveCustomPreset(name: String, bands: List<Float>) {
+        val updated = _project.value.customPresets.toMutableMap()
+        updated[name] = bands.toList()
+        _project.value = _project.value.copy(customPresets = updated, masterEqPreset = name)
+    }
+    fun deleteCustomPreset(name: String) {
+        val updated = _project.value.customPresets.toMutableMap()
+        updated.remove(name)
+        val nextPreset = if (_project.value.masterEqPreset == name) "Flat" else _project.value.masterEqPreset
+        _project.value = _project.value.copy(customPresets = updated, masterEqPreset = nextPreset)
+        if (nextPreset == "Flat") {
+            setMasterEqPreset("Flat")
+        }
     }
     fun addEffect(trackId: Int, effectType: id.soundbreaker.studio.data.EffectType) {
         val effectId = (System.currentTimeMillis() % 100000).toInt()
@@ -590,6 +606,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     put("masterEq", JSONArray(_project.value.masterEq.map { it.toDouble() }))
                     put("masterEqPreset", _project.value.masterEqPreset)
                     put("masterEqEnabled", _project.value.masterEqEnabled)
+                    val customPresetsObj = JSONObject()
+                    _project.value.customPresets.forEach { (name, bands) ->
+                        customPresetsObj.put(name, JSONArray(bands.map { it.toDouble() }))
+                    }
+                    put("customPresets", customPresetsObj)
                 }
 
                 File(dir, "project.json").writeText(root.toString(2))
@@ -614,6 +635,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val isClickOn = root.optBoolean("isClickOn", false)
                 val masterEqPreset = root.optString("masterEqPreset", "Flat")
                 val masterEqEnabled = root.optBoolean("masterEqEnabled", true)
+                val customPresets = mutableMapOf<String, List<Float>>()
+                val customPresetsJson = root.optJSONObject("customPresets")
+                if (customPresetsJson != null) {
+                    val keys = customPresetsJson.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val arr = customPresetsJson.getJSONArray(key)
+                        val bands = (0 until arr.length()).map { arr.getDouble(it).toFloat() }
+                        customPresets[key] = bands
+                    }
+                }
                 val masterEqArray = root.optJSONArray("masterEq")
                 val masterEq = if (masterEqArray != null) {
                     (0 until masterEqArray.length()).map { masterEqArray.getDouble(it).toFloat() }
@@ -739,9 +771,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             } else track
                         }
 
-                        _project.value = _project.value.copy(name = name, bpm = bpm, isLooping = isLooping, isClickOn = isClickOn, tracks = tracksWithWaveform, masterEq = masterEq, masterEqPreset = masterEqPreset, masterEqEnabled = masterEqEnabled)
-                        audioEngine.setMasterEq(masterEq)
-                        audioEngine.setMasterEqEnabled(masterEqEnabled)
+                        _project.value = _project.value.copy(
+                             name = name,
+                             bpm = bpm,
+                             isLooping = isLooping,
+                             isClickOn = isClickOn,
+                             tracks = tracksWithWaveform,
+                             masterEq = masterEq,
+                             masterEqPreset = masterEqPreset,
+                             masterEqEnabled = masterEqEnabled,
+                             customPresets = customPresets
+                         )
+                         audioEngine.setMasterEq(masterEq)
+                         audioEngine.setMasterEqEnabled(masterEqEnabled)
                         _trackPcmData.clear()
                         _trackPcmData.putAll(newPcm)
                         regionIdCounter = tracksWithWaveform.maxOfOrNull { t -> t.regions.maxOfOrNull { it.id } ?: 0 } ?: 0

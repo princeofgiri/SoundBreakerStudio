@@ -19,5 +19,7 @@ object MasterEqPresets {
         "Bass Boost" to listOf(8f, 6f, 3f, 0f, -1f, -1f, 0f, 0f, 0f, 0f),
         "Bass" to listOf(8f, 6f, 3f, 0f, -1f, -1f, 0f, 0f, 0f, 0f),
         "V-Shape" to listOf(4f, 2.5f, 1f, -1.5f, -3f, -3f, -1.5f, 1f, 2.5f, 4f),
+        "Country" to listOf(1f, 1.5f, 2f, 1f, 0f, 0.5f, 1.5f, 2f, 1f, 0.5f),
+        "Punk" to listOf(-1f, 0f, 1.5f, 3f, 4f, 3.5f, 2f, 1.5f, 0.5f, -1f),
     )
 }
