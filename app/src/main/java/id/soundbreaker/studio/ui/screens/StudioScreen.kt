@@ -155,6 +155,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onBandChange = { index, gain -> viewModel.setMasterEqBand(index, gain) },
                     onPresetSelect = { viewModel.setMasterEqPreset(it) },
                     playbackAmplitude = masterAmp,
+                    isPlaying = isPlaying,
                 )
             } else {
             // Track List

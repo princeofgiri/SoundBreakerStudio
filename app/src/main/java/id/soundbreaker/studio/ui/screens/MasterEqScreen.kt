@@ -38,6 +38,7 @@ fun MasterEqScreen(
     onBandChange: (Int, Float) -> Unit,
     onPresetSelect: (String) -> Unit,
     playbackAmplitude: Float = 0f,
+    isPlaying: Boolean = false,
 ) {
     var eqEnabled by remember { mutableStateOf(true) }
     var isAnimationPlaying by remember { mutableStateOf(true) }
@@ -159,7 +160,8 @@ fun MasterEqScreen(
                       enabled = eqEnabled,
                       isAnimationPlaying = isAnimationPlaying,
                       onPlayPauseToggle = { isAnimationPlaying = !isAnimationPlaying },
-                      playbackAmplitude = playbackAmplitude
+                      playbackAmplitude = playbackAmplitude,
+                      isPlaying = isPlaying,
                   )
 
                  Spacer(modifier = Modifier.height(12.dp))
@@ -234,6 +236,7 @@ private fun EqCurveVisualization(
     isAnimationPlaying: Boolean,
     onPlayPauseToggle: () -> Unit,
     playbackAmplitude: Float,
+    isPlaying: Boolean,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "waveform")
     val phase by infiniteTransition.animateFloat(
@@ -246,14 +249,15 @@ private fun EqCurveVisualization(
         label = "phase"
     )
 
-    val currentPhase = if (isAnimationPlaying && enabled) phase else 0f
+    val currentPhase = if (isAnimationPlaying && enabled && isPlaying) phase else 0f
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp)
+            .height(160.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF0D1117))
+            .border(1.dp, Color(0xFF30363D), RoundedCornerShape(8.dp))
     ) {
     key(eqBands) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -287,22 +291,38 @@ private fun EqCurveVisualization(
                 )
             }
 
-            if (!enabled) return@Canvas
-
             // Draw waveform bars (green)
-            val numBars = 60
+            val numBars = 120
+            val barWidth = w / numBars * 0.6f
+            val rawAmp = if (isAnimationPlaying && isPlaying) playbackAmplitude else 0f
+            val ampFactor = if (isAnimationPlaying && isPlaying) (rawAmp.coerceIn(0f, 1f) * 0.8f + 0.2f) else 0f
+
             for (i in 0 until numBars) {
                 val x = (i.toFloat() / numBars) * w
-                val barWidth = w / numBars * 0.7f
-                // Sync amplitude with audio playback level!
-                val rawAmp = if (isAnimationPlaying) playbackAmplitude else 0.02f
-                val ampFactor = if (isAnimationPlaying) (rawAmp * 0.8f + 0.15f) else 0.05f
-                val amplitude = (Math.sin(i * 0.2 + currentPhase).toFloat() * 0.4f + 0.6f) * (h * 0.35f) * ampFactor
-                drawRect(
-                    color = Color(0xFF00C853).copy(alpha = 0.6f),
-                    topLeft = Offset(x, centerY - amplitude),
-                    size = Size(barWidth, amplitude * 2),
-                )
+                
+                // Pseudo-random wave formula that changes over time (phase)
+                val wave1 = Math.sin(i * 0.15 + currentPhase * 1.5).toFloat()
+                val wave2 = Math.cos(i * 0.35 - currentPhase * 0.8).toFloat()
+                val wave3 = Math.sin(i * 0.08 + currentPhase * 2.2).toFloat()
+                
+                // Combine waves and normalize to [0, 1] range
+                val baseHeight = ((wave1 * 0.4f + wave2 * 0.3f + wave3 * 0.3f) * 0.5f + 0.5f)
+                val amplitude = baseHeight * (h * 0.42f) * ampFactor
+
+                if (amplitude > 0.01f) {
+                    // Top half (bright green)
+                    drawRect(
+                        color = Color(0xFF00E676),
+                        topLeft = Offset(x, centerY - amplitude),
+                        size = Size(barWidth, amplitude),
+                    )
+                    // Bottom half (translucent green reflection)
+                    drawRect(
+                        color = Color(0xFF00E676).copy(alpha = 0.2f),
+                        topLeft = Offset(x, centerY),
+                        size = Size(barWidth, amplitude * 0.8f),
+                    )
+                }
             }
 
             // Draw EQ curve line (cyan) as a smooth Catmull-Rom spline
