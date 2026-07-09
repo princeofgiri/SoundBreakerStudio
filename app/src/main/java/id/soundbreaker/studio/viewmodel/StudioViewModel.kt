@@ -294,7 +294,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val scaledTracks = _project.value.tracks.map { track ->
             val scaledRegions = track.regions.map { region ->
                 region.copy(
-                    startBar = region.startBar * ratio,
                     widthBars = region.widthBars * ratio
                 )
             }
