@@ -726,7 +726,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         regions = regions,
                         effects = effectsList))
 
-                    val audioFileName = t.optString("audioFile", "")
+                    var audioFileName = t.optString("audioFile", "")
+
+                    // Fallback: if audioFile is empty, try to find a matching WAV by track name
+                    if (audioFileName.isEmpty()) {
+                        val trackName = t.getString("name")
+                        val expectedWav = trackName.replace(Regex("[^a-zA-Z0-9 _-]"), "_") + ".wav"
+                        val candidateFile = File(actualDir, expectedWav)
+                        if (candidateFile.exists() && candidateFile.length() > 0) {
+                            audioFileName = expectedWav
+                            android.util.Log.e("SB", "Fallback: found $expectedWav for track $trackId (audioFile was empty)")
+                        }
+                    }
+
                     if (audioFileName.isNotEmpty()) {
                         var pcm: ShortArray? = null
 
@@ -754,6 +766,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
                         if (pcm != null && pcm.isNotEmpty()) {
                             newPcm[trackId] = pcm
+                            // Fix: update track's audioFile in the JSON if it was empty
+                            if (t.optString("audioFile", "").isEmpty()) {
+                                t.put("audioFile", audioFileName)
+                            }
                             android.util.Log.e("SB", "Loaded OK: ${pcm.size} samples for track $trackId")
                         } else {
                             android.util.Log.e("SB", "FAILED to load audio for track $trackId")
