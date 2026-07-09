@@ -559,19 +559,56 @@ class AudioEngine {
         out.write(byteBuffer.array())
     }
 
+    private fun scanWavChunks(fis: java.io.FileInputStream): Triple<Int, Int, Int>? {
+        val buf = ByteBuffer.wrap(ByteArray(4)).order(ByteOrder.LITTLE_ENDIAN)
+        var channels = 0
+        var fileSampleRate = 0
+        var dataSize = 0
+        var foundFmt = false
+        var foundData = false
+
+        // Skip RIFF(4) + fileSize(4) + WAVE(4) = 12 bytes
+        fis.skip(12)
+
+        while (!foundData) {
+            val chunkIdBytes = ByteArray(4)
+            if (fis.read(chunkIdBytes) < 4) break
+            val chunkId = String(chunkIdBytes)
+
+            buf.clear()
+            if (fis.read(buf.array()) < 4) break
+            val chunkSize = buf.getInt(0)
+
+            if (chunkId == "fmt ") {
+                val fmtData = ByteArray(minOf(chunkSize, 40))
+                fis.read(fmtData)
+                val fmtBuf = ByteBuffer.wrap(fmtData).order(ByteOrder.LITTLE_ENDIAN)
+                val audioFormat = fmtBuf.getShort(0).toInt()
+                channels = fmtBuf.getShort(2).toInt().coerceIn(1, 2)
+                fileSampleRate = fmtBuf.getInt(4).toInt().coerceIn(8000, 192000)
+                foundFmt = true
+                // Skip remaining fmt bytes
+                val remaining = chunkSize - minOf(chunkSize, 40)
+                if (remaining > 0) fis.skip(remaining.toLong())
+            } else if (chunkId == "data") {
+                dataSize = chunkSize
+                foundData = true
+            } else {
+                // Skip unknown chunk
+                fis.skip(chunkSize.toLong())
+            }
+        }
+
+        if (!foundFmt || !foundData || channels == 0 || fileSampleRate == 0) return null
+        return Triple(channels, fileSampleRate, dataSize)
+    }
+
     fun readWavFile(file: File): ShortArray? {
         try {
             val fis = java.io.FileInputStream(file)
-            val header = ByteArray(44)
-            if (fis.read(header) < 44) { fis.close(); return null }
-
-            val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
-            val channels = buffer.getShort(22).toInt().coerceIn(1, 2)
-            val bitsPerSample = 16
-            val frameSize = channels * (bitsPerSample / 8)
-
-            // Get data size from header
-            val dataSize = buffer.getInt(40).toInt().coerceAtLeast(0)
+            val info = scanWavChunks(fis) ?: run { fis.close(); return null }
+            val (channels, fileSampleRate, dataSize) = info
+            val frameSize = channels * 2
             val totalFrames = dataSize / frameSize
 
             val pcmData = ShortArray(totalFrames * channels)
@@ -592,8 +629,11 @@ class AudioEngine {
                 }
             }
             fis.close()
-            android.util.Log.i("SoundBreaker", "readWav OK: ch=$channels, frames=$totalFrames, size=${pcmData.size}")
-            return pcmData
+            val result = if (fileSampleRate != SAMPLE_RATE) {
+                resample(pcmData, channels, fileSampleRate, SAMPLE_RATE)
+            } else pcmData
+            android.util.Log.i("SoundBreaker", "readWav OK: ch=$channels, sr=$fileSampleRate, frames=$totalFrames, size=${result.size}")
+            return result
         } catch (e: Exception) {
             android.util.Log.e("SoundBreaker", "readWav FAILED: ${e.message}")
             return null
@@ -685,16 +725,50 @@ class AudioEngine {
     private fun parseWavStream(uri: android.net.Uri, context: android.content.Context): Triple<ShortArray, Int, Int>? {
         try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val headerBuf = ByteArray(44)
+
+            // Read enough for RIFF+WAVE header + scan for chunks
+            val headerBuf = ByteArray(12)
             inputStream.read(headerBuf)
-            val header = ByteBuffer.wrap(headerBuf).order(ByteOrder.LITTLE_ENDIAN)
+            val chunkId = String(headerBuf, 0, 4)
+            if (chunkId != "RIFF") { inputStream.close(); return null }
 
-            val channels = header.getShort(22).toInt().coerceIn(1, 2)
-            val fileSampleRate = header.getInt(24)
-            val dataSize = headerBuf.size - 44
-            val frameSize = channels * BYTES_PER_SAMPLE
+            var channels = 0
+            var fileSampleRate = 0
+            var dataSize = 0
+            var foundFmt = false
+            var foundData = false
+            val buf = ByteBuffer.wrap(ByteArray(4)).order(ByteOrder.LITTLE_ENDIAN)
 
-            android.util.Log.e("SoundBreaker", "WAV header: sr=$fileSampleRate, ch=$channels")
+            while (!foundData) {
+                val idBytes = ByteArray(4)
+                if (inputStream.read(idBytes) < 4) break
+                val id = String(idBytes)
+                buf.clear()
+                if (inputStream.read(buf.array()) < 4) break
+                val chunkSize = buf.getInt(0)
+
+                if (id == "fmt ") {
+                    val fmtData = ByteArray(minOf(chunkSize, 40))
+                    inputStream.read(fmtData)
+                    val fmtBuf = ByteBuffer.wrap(fmtData).order(ByteOrder.LITTLE_ENDIAN)
+                    channels = fmtBuf.getShort(2).toInt().coerceIn(1, 2)
+                    fileSampleRate = fmtBuf.getInt(4).toInt().coerceIn(8000, 192000)
+                    foundFmt = true
+                    val remaining = chunkSize - minOf(chunkSize, 40)
+                    if (remaining > 0) inputStream.skip(remaining.toLong())
+                } else if (id == "data") {
+                    dataSize = chunkSize
+                    foundData = true
+                } else {
+                    inputStream.skip(chunkSize.toLong())
+                }
+            }
+
+            if (!foundFmt || !foundData || channels == 0 || fileSampleRate == 0) {
+                inputStream.close(); return null
+            }
+
+            android.util.Log.e("SoundBreaker", "WAV parsed: sr=$fileSampleRate, ch=$channels, dataSize=$dataSize")
 
             val chunkSize = 65536
             val buffers = mutableListOf<ShortArray>()
@@ -706,7 +780,7 @@ class AudioEngine {
                 val read = inputStream.read(chunkBuf)
                 if (read <= 0) break
 
-                val shorts = ShortArray(read / BYTES_PER_SAMPLE)
+                val shorts = ShortArray(read / 2)
                 val bb = ByteBuffer.wrap(chunkBuf, 0, read).order(ByteOrder.LITTLE_ENDIAN)
                 for (i in shorts.indices) {
                     shorts[i] = bb.short
@@ -719,9 +793,9 @@ class AudioEngine {
             val totalSamples = buffers.sumOf { it.size }
             val pcmData = ShortArray(totalSamples)
             var offset = 0
-            for (buf in buffers) {
-                System.arraycopy(buf, 0, pcmData, offset, buf.size)
-                offset += buf.size
+            for (buf_ in buffers) {
+                System.arraycopy(buf_, 0, pcmData, offset, buf_.size)
+                offset += buf_.size
             }
 
             android.util.Log.e("SoundBreaker", "WAV streamed: ${pcmData.size} samples, sr=$fileSampleRate")
