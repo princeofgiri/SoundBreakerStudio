@@ -189,6 +189,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return _project.value.tracks.map { it.effects }
     }
 
+    private fun getTrackOffsets(): List<Int> {
+        val bpm = _project.value.bpm
+        val framesPerBar = (AudioEngine.SAMPLE_RATE.toLong() * 60 * 4) / bpm
+        return _project.value.tracks.map { track ->
+            val firstRegion = track.regions.firstOrNull()
+            if (firstRegion != null) {
+                ((firstRegion.startBar - 1f) * framesPerBar).toInt().coerceAtLeast(0)
+            } else 0
+        }
+    }
+
     fun startPlayback() {
         val pcmList = getFilteredPcmList()
         if (pcmList.all { it.isEmpty() }) { _message.value = "Tidak ada audio"; return }
@@ -198,7 +209,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val posMs = ((_project.value.playheadPosition - 1f) * msPerBar).toLong()
         val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
         _project.value = _project.value.copy(isPlaying = true)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets())
     }
 
     fun startPlaybackFromPosition(bar: Float) {
@@ -210,7 +221,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _isPlaying.value = true
         _isRecording.value = false
         _project.value = _project.value.copy(isPlaying = true, playheadPosition = bar)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets())
     }
 
     fun stopPlayback() {
@@ -746,7 +757,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         val wavFile = File(actualDir, audioFileName)
                         if (wavFile.exists()) {
                             android.util.Log.e("SB", "File exists: ${wavFile.absolutePath}, size=${wavFile.length()}")
-                            pcm = try { audioEngine.readWavFile(wavFile) } catch (e: Exception) {
+                            pcm = try { audioEngine.readWavFile(wavFile) } catch (e: OutOfMemoryError) {
+                                android.util.Log.e("SB", "OOM loading $audioFileName for track $trackId")
+                                null
+                            } catch (e: Exception) {
                                 android.util.Log.e("SB", "readWavFile error: ${e.message}")
                                 null
                             }
@@ -760,7 +774,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             val sdcardFile = File("/sdcard/Music/${actualDir.name}/$audioFileName")
                             android.util.Log.e("SB", "Try /sdcard: ${sdcardFile.absolutePath}, exists=${sdcardFile.exists()}")
                             if (sdcardFile.exists()) {
-                                pcm = try { audioEngine.readWavFile(sdcardFile) } catch (e: Exception) { null }
+                                pcm = try { audioEngine.readWavFile(sdcardFile) } catch (e: OutOfMemoryError) { null } catch (e: Exception) { null }
                             }
                         }
 

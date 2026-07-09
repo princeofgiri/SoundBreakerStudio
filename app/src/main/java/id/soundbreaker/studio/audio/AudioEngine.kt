@@ -46,6 +46,7 @@ class AudioEngine {
         val effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(),
         val bpm: Int = 120,
         val isClickOn: Boolean = false,
+        val trackOffsets: List<Int> = emptyList(),
     )
 
     @Volatile private var playbackState = PlaybackState(emptyList(), emptyList(), emptyList(), emptyList())
@@ -134,7 +135,7 @@ class AudioEngine {
         recordJob?.cancel()
     }
 
-    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false) {
+    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false, trackOffsets: List<Int> = emptyList()) {
         if (isPlaying) stopPlayback()
 
         val minBuffer = AudioTrack.getMinBufferSize(
@@ -167,6 +168,7 @@ class AudioEngine {
             effects = if (effects.size == trackPcmData.size) effects else trackPcmData.map { emptyList() },
             bpm = bpm,
             isClickOn = isClickOn,
+            trackOffsets = if (trackOffsets.size == trackPcmData.size) trackOffsets else trackPcmData.map { 0 },
         )
         initEqFilters()
         playbackPosition = startFrame.coerceAtLeast(0)
@@ -176,7 +178,11 @@ class AudioEngine {
 
         playJob = scope.launch {
             val framesPerChunk = 2048
-            val totalFrames = trackPcmData.maxOfOrNull { it.size / 2 } ?: 0
+            val totalFrames = trackPcmData.indices.maxOfOrNull { idx ->
+                val pcmFrames = trackPcmData[idx].size / 2
+                val offset = if (idx < trackOffsets.size) trackOffsets[idx] else 0
+                pcmFrames + offset
+            } ?: 0
 
             while (isActive && isPlaying && playbackPosition < totalFrames) {
                 if (isPaused) {
@@ -185,7 +191,7 @@ class AudioEngine {
                 }
                 val state = playbackState
                 val framesToRead = minOf(framesPerChunk, totalFrames - playbackPosition)
-                val stereoOutput = mixMultipleTracks(state.buffers, playbackPosition, framesToRead, state.volumes, state.pans)
+                val stereoOutput = mixMultipleTracks(state.buffers, playbackPosition, framesToRead, state.volumes, state.pans, state.trackOffsets)
 
                 // Calculate per-track amplitude for level meters
                 if (onTrackAmplitudes != null) {
@@ -429,12 +435,16 @@ class AudioEngine {
         playJob?.cancel()
         playJob = scope.launch {
             val framesPerChunk = 2048
-            val totalFrames = state.buffers.maxOfOrNull { it.size / 2 } ?: 0
+            val totalFrames = state.buffers.indices.maxOfOrNull { idx ->
+                val pcmFrames = state.buffers[idx].size / 2
+                val offset = if (idx < state.trackOffsets.size) state.trackOffsets[idx] else 0
+                pcmFrames + offset
+            } ?: 0
             while (isActive && isPlaying && playbackPosition < totalFrames) {
                 if (isPaused) { kotlinx.coroutines.delay(50); continue }
                 val st = playbackState
                 val framesToRead = minOf(framesPerChunk, totalFrames - playbackPosition)
-                val stereoOutput = mixMultipleTracks(st.buffers, playbackPosition, framesToRead, st.volumes, st.pans)
+                val stereoOutput = mixMultipleTracks(st.buffers, playbackPosition, framesToRead, st.volumes, st.pans, st.trackOffsets)
                 if (st.isClickOn && st.bpm > 0) mixClickTrack(stereoOutput, framesToRead, playbackPosition, st.bpm)
                 val mv = masterVolume; val mp = masterPan
                 val mpLeft = kotlin.math.cos(mp.toDouble() * Math.PI / 2.0).toFloat()
@@ -461,6 +471,7 @@ class AudioEngine {
         maxFrames: Int,
         volumes: List<Float> = emptyList(),
         pans: List<Float> = emptyList(),
+        trackOffsets: List<Int> = emptyList(),
     ): ShortArray {
         val stereoOutput = ShortArray(maxFrames * 2)
         val hasEq = eqFilters.isNotEmpty()
@@ -472,12 +483,12 @@ class AudioEngine {
                 val vol = if (idx < volumes.size) volumes[idx] else 1f
                 if (vol <= 0.001f) continue
                 val pan = if (idx < pans.size) pans[idx] else 0.5f
-                // Equal power pan: pan 0=left, 0.5=center, 1=right
                 val panAngle = pan * Math.PI.toFloat() / 2f
                 val leftGain = Math.cos(panAngle.toDouble()).toFloat()
                 val rightGain = Math.sin(panAngle.toDouble()).toFloat()
-                val sampleIdx = (startFrame + i) * 2
-                if (sampleIdx + 1 < track.size) {
+                val offset = if (idx < trackOffsets.size) trackOffsets[idx] else 0
+                val sampleIdx = (startFrame + i - offset) * 2
+                if (sampleIdx >= 0 && sampleIdx + 1 < track.size) {
                     var left = track[sampleIdx].toFloat() * vol
                     var right = track[sampleIdx + 1].toFloat() * vol
                     if (hasEq && idx < eqFilters.size) {
