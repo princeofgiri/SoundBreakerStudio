@@ -69,6 +69,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
     var saveNameText by remember { mutableStateOf(project.name) }
     var showBpmDialog by remember { mutableStateOf(false) }
     var bpmText by remember { mutableStateOf(project.bpm.toString()) }
+    LaunchedEffect(project.bpm) { bpmText = project.bpm.toString() }
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()

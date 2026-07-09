@@ -286,7 +286,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setBpm(bpm: Int) {
-        _project.value = _project.value.copy(bpm = bpm.coerceIn(20, 300))
+        val oldBpm = _project.value.bpm
+        val newBpm = bpm.coerceIn(20, 300)
+        if (oldBpm == newBpm) return
+
+        val ratio = newBpm.toFloat() / oldBpm
+        val scaledTracks = _project.value.tracks.map { track ->
+            val scaledRegions = track.regions.map { region ->
+                region.copy(
+                    startBar = region.startBar * ratio,
+                    widthBars = region.widthBars * ratio
+                )
+            }
+            track.copy(regions = scaledRegions)
+        }
+        _project.value = _project.value.copy(bpm = newBpm, tracks = scaledTracks)
         if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
     }
     fun setMasterVolume(volume: Float) {
