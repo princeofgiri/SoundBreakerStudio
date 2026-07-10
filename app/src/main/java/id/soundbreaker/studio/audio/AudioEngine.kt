@@ -328,9 +328,13 @@ class AudioEngine {
         masterVolume = volume
     }
 
+    fun getMasterVolume(): Float = masterVolume
+
     fun setMasterPan(pan: Float) {
         masterPan = pan
     }
+
+    fun getMasterPan(): Float = masterPan
 
     fun setMasterEq(bands: List<Float>) {
         masterEq.setGains(bands)

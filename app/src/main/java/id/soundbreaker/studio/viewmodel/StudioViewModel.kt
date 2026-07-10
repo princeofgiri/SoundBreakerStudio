@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import id.soundbreaker.studio.audio.AudioEngine
+import id.soundbreaker.studio.audio.AudioExporter
 import id.soundbreaker.studio.data.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,6 +73,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    private val _isExporting = MutableStateFlow(false)
+    val isExporting: StateFlow<Boolean> = _isExporting.asStateFlow()
+    private val _exportProgress = MutableStateFlow(0f)
+    val exportProgress: StateFlow<Float> = _exportProgress.asStateFlow()
 
     private val _trackPcmData = mutableMapOf<Int, ShortArray>()
     private var playheadJob: Job? = null
@@ -871,6 +877,84 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun clearMessage() { _message.value = null }
+
+    fun exportWav(fileName: String = "${_project.value.name}_export", folderPath: String = "/sdcard/Music", folderUri: android.net.Uri? = null) {
+        if (_isExporting.value) return
+        val project = _project.value
+        val pcmData = _trackPcmData
+        if (pcmData.isEmpty()) {
+            _message.value = "Tidak ada audio untuk di-export"
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _isExporting.value = true
+            _exportProgress.value = 0f
+            try {
+                val exporter = AudioExporter()
+                val safeName = fileName.replace(Regex("[^a-zA-Z0-9 _-]"), "_")
+                val config = AudioExporter.ExportConfig(
+                    trackPcmData = pcmData,
+                    trackIds = project.tracks.map { it.id },
+                    volumes = getTrackVolumes(),
+                    pans = getTrackPans(),
+                    eq = getTrackEq(),
+                    effects = getTrackEffects(),
+                    bpm = project.bpm,
+                    isClickOn = project.isClickOn,
+                    masterEq = project.masterEq,
+                    masterEqEnabled = project.masterEqEnabled,
+                    masterVolume = audioEngine.getMasterVolume(),
+                    masterPan = audioEngine.getMasterPan(),
+                )
+
+                val context = getApplication<Application>()
+                val success = if (folderUri != null) {
+                    // SAF: export to temp file, then create file in picked folder
+                    val tempFile = File(context.cacheDir, "$safeName.wav")
+                    val ok = exporter.exportToWav(config, tempFile) { _exportProgress.value = it }
+                    if (ok) {
+                        try {
+                            // Convert tree URI to document URI for createDocument
+                            val docUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                                folderUri, android.provider.DocumentsContract.getTreeDocumentId(folderUri)
+                            )
+                            val fileUri = android.provider.DocumentsContract.createDocument(
+                                context.contentResolver, docUri, "audio/wav", "$safeName.wav"
+                            )
+                            if (fileUri != null) {
+                                context.contentResolver.openOutputStream(fileUri)?.use { out ->
+                                    tempFile.inputStream().use { input -> input.copyTo(out) }
+                                }
+                                true
+                            } else false
+                        } catch (e: Exception) {
+                            android.util.Log.e("ViewModel", "SAF write failed: ${e.message}")
+                            false
+                        } finally {
+                            tempFile.delete()
+                        }
+                    } else {
+                        tempFile.delete()
+                        false
+                    }
+                } else {
+                    val dir = File(folderPath)
+                    dir.mkdirs()
+                    exporter.exportToWav(config, File(dir, "$safeName.wav")) { _exportProgress.value = it }
+                }
+
+                withContext(Dispatchers.Main) {
+                    _message.value = if (success) "Exported: ${safeName}.wav" else "Export gagal"
+                    _isExporting.value = false
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _message.value = "Export error: ${e.message}"
+                    _isExporting.value = false
+                }
+            }
+        }
+    }
 
     private fun getLastBarPosition(): Float {
         var last = 1f

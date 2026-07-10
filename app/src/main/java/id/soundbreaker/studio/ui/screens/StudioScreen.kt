@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -58,6 +59,8 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val availableInputs by viewModel.availableInputs.collectAsState()
     val availableOutputs by viewModel.availableOutputs.collectAsState()
     val outputDevice by viewModel.outputDevice.collectAsState()
+    val isExporting by viewModel.isExporting.collectAsState()
+    val exportProgress by viewModel.exportProgress.collectAsState()
     val context = LocalContext.current
     val density = LocalDensity.current
 
@@ -68,6 +71,20 @@ fun StudioScreen(viewModel: StudioViewModel) {
     var showSaveDialog by remember { mutableStateOf(false) }
     var saveNameText by remember { mutableStateOf(project.name) }
     var showBpmDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var exportFileName by remember { mutableStateOf("") }
+    var exportFolderUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var exportFolderPath by remember { mutableStateOf("/sdcard/Music") }
+    val folderPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let {
+            exportFolderUri = it
+            // Try to resolve readable path
+            val path = it.path ?: ""
+            exportFolderPath = if (path.contains("/primary:")) {
+                "/storage/emulated/0/" + path.substringAfter("/primary:")
+            } else path.ifEmpty { "/sdcard/Music" }
+        }
+    }
     var bpmText by remember { mutableStateOf(project.bpm.toString()) }
     LaunchedEffect(project.bpm) { bpmText = project.bpm.toString() }
     val verticalScrollState = rememberScrollState()
@@ -103,8 +120,8 @@ fun StudioScreen(viewModel: StudioViewModel) {
     val openProjectLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.openProject(it) }
     }
-    val exportWavLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { uri ->
-        uri?.let { viewModel.exportWav(it) }
+    val exportWavLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { _ ->
+        viewModel.exportWav()
     }
 
     var touchedRegionId by remember { mutableStateOf<Int?>(null) }
@@ -117,8 +134,21 @@ fun StudioScreen(viewModel: StudioViewModel) {
             onNew = { viewModel.newProject() },
             onOpen = { openProjectLauncher.launch(arrayOf("application/json", "*/*")) },
             onSave = { saveNameText = project.name; showSaveDialog = true },
-            onExport = { exportWavLauncher.launch("${project.name}.wav") },
+            onExport = { exportFileName = "${project.name}_export"; showExportDialog = true },
         )
+
+        if (isExporting) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                LinearProgressIndicator(
+                    progress = { exportProgress },
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                    color = AccentGreen,
+                    trackColor = DarkSurface,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text("Exporting... ${(exportProgress * 100).toInt()}%", color = TextMuted, fontSize = 10.sp)
+            }
+        }
 
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (activeTab == "Mix") {
@@ -303,7 +333,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                 )
             }
             if (activeTab != "Mix") {
-                MiniMixerBar(tracks = project.tracks, onExport = { exportWavLauncher.launch("recording.wav") },
+                MiniMixerBar(tracks = project.tracks, onExport = { exportFileName = "${project.name}_export"; showExportDialog = true },
                     onImport = { filePickerLauncher.launch(arrayOf("audio/*")) },
                     onTrackVolumeChange = { trackId, vol -> viewModel.setTrackVolume(trackId, vol) },
                     masterVolume = masterVolume,
@@ -350,6 +380,45 @@ fun StudioScreen(viewModel: StudioViewModel) {
             },
             confirmButton = { TextButton(onClick = { viewModel.saveProject(saveNameText); showSaveDialog = false }) { Text("Save", color = AccentRed) } },
             dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("Cancel", color = TextMuted) } },
+        )
+    }
+
+    // Export Dialog
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            containerColor = Color(0xFF1A1A1A), titleContentColor = TextPrimary,
+            title = { Text("Export WAV") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = exportFileName, onValueChange = { exportFileName = it.filter { c -> c.isLetterOrDigit() || c == ' ' || c == '_' || c == '-' } },
+                        singleLine = true,
+                        label = { Text("File Name", color = TextMuted) },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentGreen, unfocusedBorderColor = DarkBorderLight, cursorColor = AccentGreen),
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Folder:", color = TextMuted, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(exportFolderPath, color = TextPrimary, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(onClick = { folderPickerLauncher.launch(null) }) {
+                            Text("Ganti", color = AccentGreen, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Format: WAV 44.1kHz, 16-bit stereo", color = TextMuted, fontSize = 11.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val safeName = exportFileName.replace(Regex("[^a-zA-Z0-9 _-]"), "_")
+                    viewModel.exportWav(safeName, exportFolderPath, exportFolderUri)
+                    showExportDialog = false
+                }) { Text("Export", color = AccentGreen) }
+            },
+            dismissButton = { TextButton(onClick = { showExportDialog = false }) { Text("Cancel", color = TextMuted) } },
         )
     }
 
