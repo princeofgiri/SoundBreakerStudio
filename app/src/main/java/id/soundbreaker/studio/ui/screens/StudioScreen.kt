@@ -197,7 +197,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
             } else {
             // Track List
             Column(modifier = Modifier.width(280.dp).fillMaxHeight().background(DarkSurface)) {
-                PanelHeader("Tracks")
+                PanelHeader("Tracks", onAdd = { viewModel.addTrack() })
                 Box(modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(verticalScrollState)) {
                     Column {
                         Spacer(modifier = Modifier.height(RULER_HEIGHT))
@@ -500,11 +500,11 @@ private fun MiniToggle(isOn: Boolean, activeColor: Color, onToggle: () -> Unit) 
 }
 
 @Composable
-private fun PanelHeader(title: String) {
+private fun PanelHeader(title: String, onAdd: (() -> Unit)? = null) {
     Row(modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(title, color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-        Box(modifier = Modifier.size(22.dp).background(AccentRed, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) { Text("+", color = Color.White, fontSize = 14.sp) }
+        Box(modifier = Modifier.size(22.dp).background(AccentRed, RoundedCornerShape(4.dp)).let { if (onAdd != null) it.clickable { onAdd() } else it }, contentAlignment = Alignment.Center) { Text("+", color = Color.White, fontSize = 14.sp) }
     }
 }
 
