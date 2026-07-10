@@ -1,99 +1,113 @@
 # SoundBreaker Studio
 
-Android DAW (Digital Audio Workstation) application built with Kotlin and Jetpack Compose.
+Android DAW (Digital Audio Workstation) built with Kotlin & Jetpack Compose. Designed for tablet landscape.
 
-## Screenshots
-
-### Edit Tab
 ![Edit Tab](screenshot_edit.png)
-
-### Mix Tab
-![Mix Tab](screenshot_mix.png)
-
-### FX Tab
-![FX Tab](screenshot_fx.png)
-
-### Master EQ Tab
-![Master EQ](screenshot_master_eq.png)
 
 ## Features
 
-### Audio
-- Record stereo audio (44.1kHz, 16-bit PCM)
-- Import WAV, AIFF, MP3, AAC, M4A files
-- Automatic resampling to 44.1kHz for all formats
-- WAV header parsing with JUNK/non-standard chunk support
-- Export to WAV
-- Multi-track playback with real-time mixing
+### Multi-Tab Workspace
 
-### Editing
-- Select, delete, cut audio regions
-- Move regions via drag or nudge buttons
-- Region-aware playback (audio follows region position on timeline)
-- Timeline with configurable bars, tap to set playhead position
+**Edit** — Timeline with multi-track waveform editing
 
-### BPM
-- Editable BPM with dialog input (displays current value)
-- Region width scales proportionally when BPM changes
-- Metronome click track (toggle on/off)
+![Edit Tab](screenshot_edit.png)
 
-### Mixer (Mix Tab)
-- Per-channel volume faders
-- Per-channel pan controls
-- Master volume and pan
-- Mute / Solo per track
+- Zoom in/out timeline with pinch
+- Select, move, cut, delete audio regions
+- Nudge buttons (◀ ▶) for precise positioning
+- Tap timeline to set playhead
+- Auto-scroll to follow playhead during playback
+
+**Mix** — Full mixer console with per-channel strips
+
+![Mix Tab](screenshot_mix.png)
+
+- Per-channel volume faders (vertical)
+- Pan knobs with equal-power law
+- Per-channel Mute / Solo
 - Real-time level meters during playback
-- Audio output device selection (Speaker, USB, etc.)
+- Master strip with volume, pan, and output device selector
 
-### Effects (FX Tab)
-- Per-track effect chain management
-- 6 built-in effects: Compressor, Reverb, Delay, Chorus, Distortion, Filter
-- Toggle enable/disable per effect
-- Adjustable parameters per effect with sliders
+**FX** — Per-track effects chain with parameter editing
 
-### Master EQ
-- 10-band graphic equalizer (31Hz - 16kHz)
-- Preset system (Flat, Bass, Vocal, Bright, V-Shape, etc.)
-- Custom preset save/load
-- Power toggle (bypass)
-- Canvas waveform + EQ curve visualization
+![FX Tab](screenshot_fx.png)
+
+- Track selector (left panel)
+- Effect chain management (middle): add, toggle, remove effects
+- Parameter sliders per effect (right panel)
+- Effects: Compressor, Reverb, Delay, Chorus, Distortion, Filter
+- Real-time processing in playback loop
+
+**Master EQ** — 10-band parametric equalizer on master bus
+
+![Master EQ Tab](screenshot_master_eq.png)
+
+- 10-band graphic EQ (31 Hz – 16 kHz)
+- 12 built-in presets (Flat, Rock, Pop, Jazz, Classical, Electronic, Hip-Hop, Acoustic, Bright, Warm, Vocal, Bass Boost)
+- Waveform + EQ curve visualization
+- Power toggle, preset chips, reset button
 - Applied post-mix, pre-master-volume
 
+---
+
+### Audio Engine
+
+- Record stereo audio (44.1 kHz, 16-bit PCM)
+- Import WAV, AIFF, MP3, AAC files
+- Export to WAV
+- Multi-track playback with real-time mixing
+- Sample rate auto-detect + resample to 44.1 kHz on import
+- WAV chunk scanning: handles non-standard WAV files (JUNK, INFO chunks)
+- Streaming file read (8 KB chunks) — prevents OOM with 7+ large tracks
+
+### Editing
+
+- Region selection, deletion, cutting
+- Move regions via drag or nudge buttons
+- Per-region BPM-aware width scaling
+- Timeline with 200 bars
+
 ### Track Controls
-- Mute / Solo / Record arm per track
-- Per-track volume and pan
-- Per-track 3-band EQ (Low, Mid, High)
+
+- Mute / Solo per track
+- Volume, Pan, EQ per track
 - Track rename (double-tap)
 - Add / Remove tracks
-- Audio input source selection per track
+- Audio input routing per track
+- Audio output device selection
 
-### Inspector
-- Volume, Pan controls
-- 3-band EQ sliders
-- Sample rate and bit depth display
-- Delete track button
+### Transport
+
+- Play / Pause / Stop / Record
+- Fast-forward / Rewind
+- BPM editing (tap BPM in transport bar)
+- Time signature display
+- Loop toggle
+- Click track (metronome)
+- Bar:Beat:Ticks counter + elapsed time
 
 ### Visualization
+
 - Waveform display (symmetric filled envelope)
-- 60fps smooth playhead with auto-scroll
-- Zoom in/out timeline
-- Dynamic level meters during playback
+- 60 fps smooth playhead with auto-scroll
+- Real-time level meters in mixer
 
 ### Project Management
-- Save/Open projects (.sbrk format)
+
+- Save / Open projects (.sbrk format)
 - Custom project names
-- All track settings persisted (volume, pan, EQ, effects, regions)
-- Master EQ settings persisted
-- File structure: `project_name.sbrk/project.json + track_N.wav`
+- BPM and all track settings persist
+
+---
 
 ## Tech Stack
+
 - **Language**: Kotlin
 - **UI**: Jetpack Compose
 - **Architecture**: MVVM
-- **Audio**: AudioTrack (playback), AudioRecord (recording), MediaCodec (decode)
-- **Target**: Tablet Landscape (primary)
-- **Min SDK**: 26 (Android 8.0)
-- **Target SDK**: 36
+- **Audio**: AudioTrack + AudioRecord, MediaCodec decode, custom DSP
+- **Tablet Landscape** (primary)
+- **Min SDK**: 26 (Android 8.0) / **Target SDK**: 36
 
 ## Project Structure
 
@@ -101,33 +115,31 @@ Android DAW (Digital Audio Workstation) application built with Kotlin and Jetpac
 app/src/main/java/id/soundbreaker/studio/
 ├── MainActivity.kt
 ├── audio/
-│   ├── AudioEngine.kt           (playback, recording, mixing, WAV read/write, resampling)
-│   ├── MasterEqProcessor.kt     (10-band biquad EQ DSP)
-│   ├── BiquadFilter.kt          (biquad filter implementation)
-│   ├── EffectsProcessor.kt      (per-track effects chain)
-│   └── TrackEffectsChain.kt     (effect state management)
+│   ├── AudioEngine.kt           (record, playback, WAV read/write, resampling, mix)
+│   ├── EffectsProcessor.kt      (per-track effects: compressor, reverb, delay, chorus, dist, filter)
+│   └── MasterEqProcessor.kt     (10-band biquad EQ for master bus)
 ├── data/
-│   ├── Track.kt                 (data models: Track, AudioRegion, Effect, ProjectState)
-│   └── ProjectData.kt           (JSON serialization for save/load)
+│   ├── Track.kt                  (data models)
+│   ├── ProjectData.kt            (JSON serialization)
+│   └── MasterEqPresets.kt        (12 EQ presets)
 ├── ui/
 │   ├── theme/
 │   │   ├── Color.kt
 │   │   └── Theme.kt
 │   ├── components/
-│   │   ├── TopBar.kt            (tabs, New, Open, Save, Export)
-│   │   ├── TrackListItem.kt     (track list with M/S/R)
-│   │   ├── Timeline.kt          (ruler, track lanes, waveform rendering)
-│   │   ├── InspectorPanel.kt    (volume, pan, EQ, sample rate info)
-│   │   ├── TransportBar.kt      (play/pause/stop/record, BPM, click)
-│   │   ├── MiniChannelFader.kt  (mini mixer faders in Edit view)
-│   │   └── TimelineScrollBar.kt (horizontal scrollbar)
+│   │   ├── TopBar.kt             (New, Open, Save, Export, tabs)
+│   │   ├── TrackListItem.kt      (track list with M/S/R)
+│   │   ├── Timeline.kt           (ruler, track lanes, waveform)
+│   │   ├── InspectorPanel.kt     (volume, pan, EQ, effects, delete)
+│   │   ├── TransportBar.kt       (play/pause/stop/record, BPM, loop, click)
+│   │   └── MiniChannelFader.kt   (mini mixer faders)
 │   └── screens/
-│       ├── StudioScreen.kt      (main layout with tab switching)
-│       ├── MixScreen.kt         (full mixer console with channel strips)
-│       ├── FxScreen.kt          (per-track effects chain editor)
-│       └── MasterEqScreen.kt    (10-band parametric EQ UI)
+│       ├── StudioScreen.kt       (main layout, tab routing)
+│       ├── MixScreen.kt          (full mixer console)
+│       ├── FxScreen.kt           (effects chain editor)
+│       └── MasterEqScreen.kt     (10-band parametric EQ)
 └── viewmodel/
-    └── StudioViewModel.kt       (state management, audio engine control)
+    └── StudioViewModel.kt        (state management, audio engine)
 ```
 
 ## Build
@@ -138,31 +150,34 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Permissions
-- `RECORD_AUDIO` - for audio recording
-- `MODIFY_AUDIO_SETTINGS` - for audio configuration
-- `MANAGE_EXTERNAL_STORAGE` - for save/load projects
+
+- `RECORD_AUDIO` — audio recording
+- `MODIFY_AUDIO_SETTINGS` — audio configuration
+- `MANAGE_EXTERNAL_STORAGE` — save/load projects
 
 ## File Format
 
 ### Save Project (.sbrk folder)
+
 ```
 project_name.sbrk/
-├── project.json    (settings, track metadata, regions, effects, EQ)
-├── Audio 1.wav     (audio files per track)
-├── Audio 2.wav
+├── project.json      (settings, track metadata, regions, master EQ)
+├── track_1.wav       (audio files)
+├── track_2.wav
 └── ...
 ```
 
 ### project.json structure
+
 ```json
 {
   "name": "My Project",
   "bpm": 120,
+  "timeSigNumerator": 4,
+  "timeSigDenominator": 4,
   "isLooping": true,
-  "isClickOn": false,
-  "masterEq": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "masterEq": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
   "masterEqPreset": "Flat",
-  "masterEqEnabled": true,
   "tracks": [
     {
       "id": 1,
@@ -171,27 +186,20 @@ project_name.sbrk/
       "color": "#FF4757",
       "volume": 0.75,
       "pan": 0.5,
-      "audioFile": "Audio 1.wav",
+      "isMuted": false,
+      "isSolo": false,
       "channels": 2,
       "bitDepth": 16,
-      "eqLow": 0,
-      "eqMid": 0,
-      "eqHigh": 0,
+      "sampleRate": 44100,
+      "audioFile": "Audio 1.wav",
+      "eqLow": 0.0,
+      "eqMid": 0.0,
+      "eqHigh": 0.0,
       "regions": [
         {
-          "id": 101,
-          "name": "audio.wav",
+          "id": 1,
           "startBar": 1.0,
-          "widthBars": 75.08
-        }
-      ],
-      "effects": [
-        {
-          "id": 53104,
-          "name": "Reverb",
-          "icon": "reverb",
-          "isEnabled": true,
-          "params": { "amount": 0.3, "decay": 0.5 }
+          "widthBars": 16.0
         }
       ]
     }

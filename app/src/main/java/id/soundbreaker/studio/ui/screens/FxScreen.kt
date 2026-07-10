@@ -1,6 +1,7 @@
 package id.soundbreaker.studio.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -50,11 +51,16 @@ fun FxScreen(
             Text("Tracks", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(8.dp))
             tracks.forEach { track ->
+                val hasActiveFx = track.effects.any { it.isEnabled }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 2.dp)
                         .clip(RoundedCornerShape(6.dp))
+                        .then(
+                            if (hasActiveFx) Modifier.border(1.dp, AccentGreen.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                            else Modifier
+                        )
                         .background(if (track.id == selectedTrackId) AccentRed.copy(alpha = 0.2f) else Color.Transparent)
                         .clickable { onSelectTrack(track.id) }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
