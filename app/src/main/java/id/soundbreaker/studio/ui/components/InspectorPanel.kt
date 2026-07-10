@@ -69,7 +69,7 @@ fun InspectorPanel(
             // Input Source dropdown
             var inputExpanded by remember { mutableStateOf(false) }
             val allInputs = listOf("None") + availableInputs
-            InspectorRow("Input", inputSource)
+            InspectorRow("Input", inputSource.substringBefore("(").trim().let { if (it == "Mic Internal") "Mic" else it })
             Spacer(modifier = Modifier.height(4.dp))
             Box {
                 Box(
