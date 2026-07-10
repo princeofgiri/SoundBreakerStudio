@@ -66,8 +66,9 @@ fun InspectorPanel(
             // Input Source selector
             InspectorRow("Input", inputSource)
             Spacer(modifier = Modifier.height(4.dp))
+            val allInputs = listOf("None") + availableInputs
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                availableInputs.take(3).forEach { input ->
+                allInputs.take(3).forEach { input ->
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -78,7 +79,7 @@ fun InspectorPanel(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = input.take(6),
+                            text = if (input == "None") "—" else input.take(6),
                             color = if (inputSource == input) AccentBlue else TextMuted,
                             fontSize = 9.sp,
                             maxLines = 1,
@@ -87,9 +88,32 @@ fun InspectorPanel(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            if (availableInputs.size > 3) {
+            if (allInputs.size > 3) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    availableInputs.drop(3).take(3).forEach { input ->
+                    allInputs.drop(3).take(3).forEach { input ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
+                                .clickable { onInputSourceChange(input) }
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = input.take(6),
+                                color = if (inputSource == input) AccentBlue else TextMuted,
+                                fontSize = 9.sp,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+            if (allInputs.size > 6) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    allInputs.drop(6).take(3).forEach { input ->
                         Box(
                             modifier = Modifier
                                 .weight(1f)
