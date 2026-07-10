@@ -1,5 +1,6 @@
 package id.soundbreaker.studio.audio
 
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -144,6 +145,12 @@ class AudioEngine {
         val bufferSize = (minBuffer * 2).coerceAtLeast(8192)
 
         audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setSampleRate(SAMPLE_RATE)
@@ -155,9 +162,11 @@ class AudioEngine {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
-        // Apply preferred output device
-        preferredOutputDeviceInfo?.let { device ->
-            audioTrack?.setPreferredDevice(device)
+        // Skip setPreferredDevice for Bluetooth — let Android system route automatically.
+        // setPreferredDevice on BT causes dead IAudioTrack on Huawei devices.
+        // Only use setPreferredDevice for Speaker (builtin).
+        if (preferredOutputDevice == "Speaker") {
+            resolveOutputDevice()?.let { audioTrack?.setPreferredDevice(it) }
         }
 
         playbackState = PlaybackState(
@@ -377,6 +386,7 @@ class AudioEngine {
     }
 
     fun setOutputDevice(context: Context, deviceName: String) {
+        this.context = context
         preferredOutputDevice = deviceName
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -404,6 +414,22 @@ class AudioEngine {
         }
     }
 
+    private var context: Context? = null
+
+    private fun resolveOutputDevice(): AudioDeviceInfo? {
+        if (preferredOutputDevice == "Speaker") return preferredOutputDeviceInfo
+        val ctx = context ?: return preferredOutputDeviceInfo
+        val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        for (device in devices) {
+            val name = device.productName?.toString() ?: continue
+            if (preferredOutputDevice.contains(name) || name.contains(preferredOutputDevice)) {
+                return device
+            }
+        }
+        return preferredOutputDeviceInfo
+    }
+
     private fun restartWithCurrentState() {
         if (!isPlaying) return
         val state = playbackState
@@ -418,6 +444,12 @@ class AudioEngine {
         val minBuffer = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG_OUT, AUDIO_FORMAT)
         val bufferSize = (minBuffer * 2).coerceAtLeast(8192)
         audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setSampleRate(SAMPLE_RATE)
@@ -428,7 +460,9 @@ class AudioEngine {
             .setBufferSizeInBytes(bufferSize)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
-        preferredOutputDeviceInfo?.let { audioTrack?.setPreferredDevice(it) }
+        if (preferredOutputDevice == "Speaker") {
+            resolveOutputDevice()?.let { audioTrack?.setPreferredDevice(it) }
+        }
         playbackPosition = pos
         isPlaying = true
         audioTrack?.play()
