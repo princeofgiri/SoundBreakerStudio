@@ -107,8 +107,7 @@ fun MasterEqScreen(
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Column {
-                        Text("PARAMETRIC EQ · 10-BAND", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("CH 01 — MASTER BUS", color = TextMuted, fontSize = 10.sp)
+                        Text("BREAKER EQ · 10-BAND", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
