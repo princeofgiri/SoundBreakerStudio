@@ -7,9 +7,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,96 +66,45 @@ fun InspectorPanel(
             InspectorRow("Sample Rate", "${sampleRate} Hz")
             InspectorRow("Bit Depth", "${bitDepth}-bit")
             Spacer(modifier = Modifier.height(8.dp))
-            // Input Source selector
+            // Input Source dropdown
+            var inputExpanded by remember { mutableStateOf(false) }
+            val allInputs = listOf("None") + availableInputs
             InspectorRow("Input", inputSource)
             Spacer(modifier = Modifier.height(4.dp))
-            val allInputs = listOf("None") + availableInputs
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                allInputs.take(3).forEach { input ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
-                            .clickable { onInputSourceChange(input) }
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+            Box {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF1A1A1A))
+                        .clickable { inputExpanded = true }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = if (input == "None") "—" else input.take(9),
-                            color = if (inputSource == input) AccentBlue else TextMuted,
-                            fontSize = 9.sp,
-                            maxLines = 1,
+                            text = inputSource,
+                            color = TextPrimary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f),
                         )
+                        Text("▼", color = TextMuted, fontSize = 10.sp)
                     }
                 }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            if (allInputs.size > 3) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    allInputs.drop(3).take(3).forEach { input ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
-                                .clickable { onInputSourceChange(input) }
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = input.take(9),
-                                color = if (inputSource == input) AccentBlue else TextMuted,
-                                fontSize = 9.sp,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-            }
-            if (allInputs.size > 6) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    allInputs.drop(6).take(3).forEach { input ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
-                                .clickable { onInputSourceChange(input) }
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = input.take(9),
-                                color = if (inputSource == input) AccentBlue else TextMuted,
-                                fontSize = 9.sp,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-            }
-            if (allInputs.size > 9) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    allInputs.drop(9).take(3).forEach { input ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
-                                .clickable { onInputSourceChange(input) }
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = input.take(9),
-                                color = if (inputSource == input) AccentBlue else TextMuted,
-                                fontSize = 9.sp,
-                                maxLines = 1,
-                            )
-                        }
+                DropdownMenu(expanded = inputExpanded, onDismissRequest = { inputExpanded = false }) {
+                    allInputs.forEach { input ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = input,
+                                    color = if (input == inputSource) AccentBlue else TextPrimary,
+                                    fontSize = 12.sp,
+                                )
+                            },
+                            onClick = {
+                                onInputSourceChange(input)
+                                inputExpanded = false
+                            },
+                        )
                     }
                 }
             }

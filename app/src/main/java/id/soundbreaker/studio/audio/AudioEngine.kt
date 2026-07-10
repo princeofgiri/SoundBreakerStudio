@@ -347,31 +347,31 @@ class AudioEngine {
     fun getAvailableInputs(context: Context): List<String> {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-        val inputs = mutableListOf("Mic")
+        val inputs = mutableListOf("Mic Internal")
         for (device in devices) {
-            val name = device.productName?.toString() ?: continue
-            if (name.isBlank()) continue
+            val name = device.productName?.toString() ?: ""
             when (device.type) {
                 AudioDeviceInfo.TYPE_USB_DEVICE,
                 AudioDeviceInfo.TYPE_USB_ACCESSORY,
                 AudioDeviceInfo.TYPE_USB_HEADSET -> {
+                    val label = if (name.isNotBlank()) name else "USB Audio"
                     val channels = device.channelCounts
-                    if (channels != null && channels.size > 1) {
-                        // Multi-channel USB device: show per-channel options
-                        val maxCh = channels.max()
-                        if (maxCh >= 2) {
-                            inputs.add("USB: $name (L+R)")
-                        }
-                        for (ch in 1..maxCh.coerceAtMost(8)) {
-                            inputs.add("USB: $name (Ch $ch)")
-                        }
+                    if (channels != null && channels.size > 1 && channels.max() >= 2) {
+                        inputs.add("USB Input 1 ($label, Ch 1)")
+                        inputs.add("USB Input 2 ($label, Ch 2)")
                     } else {
-                        inputs.add("USB: $name")
+                        inputs.add("USB Input 1 ($label)")
                     }
                 }
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> inputs.add("BT: $name")
-                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> inputs.add("BT: $name")
-                AudioDeviceInfo.TYPE_BUILTIN_MIC -> { /* already have "Mic" */ }
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
+                    val label = if (name.isNotBlank()) name else "BT"
+                    inputs.add("Mic BT ($label)")
+                }
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> {
+                    val label = if (name.isNotBlank()) name else "BT"
+                    inputs.add("Mic BT ($label)")
+                }
+                AudioDeviceInfo.TYPE_BUILTIN_MIC -> { /* already have "Mic Internal" */ }
             }
         }
         return inputs.distinct()
