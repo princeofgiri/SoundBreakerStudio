@@ -352,9 +352,23 @@ class AudioEngine {
             val name = device.productName?.toString() ?: continue
             if (name.isBlank()) continue
             when (device.type) {
-                AudioDeviceInfo.TYPE_USB_DEVICE -> inputs.add("USB: $name")
-                AudioDeviceInfo.TYPE_USB_ACCESSORY -> inputs.add("USB: $name")
-                AudioDeviceInfo.TYPE_USB_HEADSET -> inputs.add("USB: $name")
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                AudioDeviceInfo.TYPE_USB_HEADSET -> {
+                    val channels = device.channelCounts
+                    if (channels != null && channels.size > 1) {
+                        // Multi-channel USB device: show per-channel options
+                        val maxCh = channels.max()
+                        if (maxCh >= 2) {
+                            inputs.add("USB: $name (L+R)")
+                        }
+                        for (ch in 1..maxCh.coerceAtMost(8)) {
+                            inputs.add("USB: $name (Ch $ch)")
+                        }
+                    } else {
+                        inputs.add("USB: $name")
+                    }
+                }
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> inputs.add("BT: $name")
                 AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> inputs.add("BT: $name")
                 AudioDeviceInfo.TYPE_BUILTIN_MIC -> { /* already have "Mic" */ }

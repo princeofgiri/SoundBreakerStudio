@@ -79,7 +79,7 @@ fun InspectorPanel(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = if (input == "None") "—" else input.take(6),
+                            text = if (input == "None") "—" else input.take(9),
                             color = if (inputSource == input) AccentBlue else TextMuted,
                             fontSize = 9.sp,
                             maxLines = 1,
@@ -101,7 +101,7 @@ fun InspectorPanel(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = input.take(6),
+                                text = input.take(9),
                                 color = if (inputSource == input) AccentBlue else TextMuted,
                                 fontSize = 9.sp,
                                 maxLines = 1,
@@ -124,7 +124,30 @@ fun InspectorPanel(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = input.take(6),
+                                text = input.take(9),
+                                color = if (inputSource == input) AccentBlue else TextMuted,
+                                fontSize = 9.sp,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+            if (allInputs.size > 9) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    allInputs.drop(9).take(3).forEach { input ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (inputSource == input) AccentBlue.copy(alpha = 0.3f) else Color(0xFF1A1A1A))
+                                .clickable { onInputSourceChange(input) }
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = input.take(9),
                                 color = if (inputSource == input) AccentBlue else TextMuted,
                                 fontSize = 9.sp,
                                 maxLines = 1,
