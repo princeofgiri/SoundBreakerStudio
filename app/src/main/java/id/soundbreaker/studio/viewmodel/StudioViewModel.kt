@@ -102,6 +102,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val savedOutput = prefs.getString("output_device", null)
         val defaultOutput = savedOutput ?: _availableOutputs.value.firstOrNull() ?: "Speaker"
         setOutputDevice(defaultOutput)
+
+        // Auto-refresh device list when audio devices change (USB plug/unplug, BT connect/disconnect)
+        val audioManager = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.registerAudioDeviceCallback(object : android.media.AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>) {
+                refreshAvailableInputs()
+                refreshAvailableOutputs()
+            }
+            override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>) {
+                refreshAvailableInputs()
+                refreshAvailableOutputs()
+            }
+        }, null)
     }
 
     fun hasRecordPermission(): Boolean {

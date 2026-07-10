@@ -162,12 +162,7 @@ class AudioEngine {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
-        // Skip setPreferredDevice for Bluetooth — let Android system route automatically.
-        // setPreferredDevice on BT causes dead IAudioTrack on Huawei devices.
-        // Only use setPreferredDevice for Speaker (builtin).
-        if (preferredOutputDevice == "Speaker") {
-            resolveOutputDevice()?.let { audioTrack?.setPreferredDevice(it) }
-        }
+        resolveOutputDevice()?.let { audioTrack?.setPreferredDevice(it) }
 
         playbackState = PlaybackState(
             buffers = trackPcmData,
@@ -460,9 +455,7 @@ class AudioEngine {
             .setBufferSizeInBytes(bufferSize)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
-        if (preferredOutputDevice == "Speaker") {
-            resolveOutputDevice()?.let { audioTrack?.setPreferredDevice(it) }
-        }
+        resolveOutputDevice()?.let { audioTrack?.setPreferredDevice(it) }
         playbackPosition = pos
         isPlaying = true
         audioTrack?.play()
