@@ -499,6 +499,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun removeTrack(trackId: Int) {
+        // Delete WAV file from project directory if it exists
+        val track = _project.value.tracks.find { it.id == trackId }
+        if (track != null) {
+            val wavName = track.name.replace(Regex("[^a-zA-Z0-9 _-]"), "_") + ".wav"
+            val projectDir = File("/storage/emulated/0/Music/${_project.value.name.replace(Regex("[^a-zA-Z0-9 _-]"), "_")}.sbrk")
+            val wavFile = File(projectDir, wavName)
+            if (wavFile.exists()) wavFile.delete()
+        }
+        _trackPcmData.remove(trackId)
         _project.value = _project.value.copy(tracks = _project.value.tracks.filter { it.id != trackId })
         if (_selectedTrackId.value == trackId) _selectedTrackId.value = _project.value.tracks.firstOrNull()?.id ?: -1
     }
