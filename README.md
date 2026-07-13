@@ -2,7 +2,7 @@
 
 Android DAW (Digital Audio Workstation) built with Kotlin & Jetpack Compose. Designed for tablet landscape.
 
-![Edit Tab](screenshot_edit.png)
+![Edit Tab](edit.png)
 
 ## Features
 
@@ -10,7 +10,7 @@ Android DAW (Digital Audio Workstation) built with Kotlin & Jetpack Compose. Des
 
 **Edit** — Timeline with multi-track waveform editing
 
-![Edit Tab](screenshot_edit.png)
+![Edit Tab](edit.png)
 
 - Zoom in/out timeline with pinch
 - Select, move, cut, delete audio regions
@@ -20,7 +20,7 @@ Android DAW (Digital Audio Workstation) built with Kotlin & Jetpack Compose. Des
 
 **Mix** — Full mixer console with per-channel strips
 
-![Mix Tab](screenshot_mix.png)
+![Mix Tab](mix.png)
 
 - Per-channel volume faders (vertical)
 - Pan knobs with equal-power law
@@ -30,7 +30,7 @@ Android DAW (Digital Audio Workstation) built with Kotlin & Jetpack Compose. Des
 
 **FX** — Per-track effects chain with parameter editing
 
-![FX Tab](screenshot_fx.png)
+![FX Tab](fx.png)
 
 - Track selector (left panel)
 - Effect chain management (middle): add, toggle, remove effects
@@ -40,7 +40,7 @@ Android DAW (Digital Audio Workstation) built with Kotlin & Jetpack Compose. Des
 
 **Master EQ** — 10-band parametric equalizer on master bus
 
-![Master EQ Tab](screenshot_master_eq.png)
+![Master EQ Tab](master-eq.png)
 
 - 10-band graphic EQ (31 Hz – 16 kHz)
 - 12 built-in presets (Flat, Rock, Pop, Jazz, Classical, Electronic, Hip-Hop, Acoustic, Bright, Warm, Vocal, Bass Boost)
