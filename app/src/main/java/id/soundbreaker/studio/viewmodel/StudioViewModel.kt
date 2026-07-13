@@ -83,6 +83,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var playheadJob: Job? = null
     private var regionIdCounter = 100
     private var nextTrackId = 1
+    private var recordStartBar: Float = 1f
     private val totalBars = 200
 
     init {
@@ -101,6 +102,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         audioEngine.onTrackAmplitudes = { amps ->
             _trackAmplitudes.value = amps
+        }
+        audioEngine.onRecordingWaveform = waveform@{ waveform ->
+            val armedTrackId = _project.value.tracks.find { it.isArmed }?.id ?: return@waveform
+            updateTrack(armedTrackId) { track ->
+                val regions = track.regions.map { region ->
+                    if (region.name == "Recording...") region.copy(waveform = waveform)
+                    else region
+                }
+                track.copy(regions = regions)
+            }
         }
         refreshAvailableInputs()
         refreshAvailableOutputs()
@@ -134,9 +145,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val armedTrack = _project.value.tracks.find { it.isArmed }
         if (armedTrack == null) { _message.value = "Arm track dulu (tap R)"; return }
 
+        recordStartBar = _project.value.playheadPosition
         _isRecording.value = true
-        _project.value = _project.value.copy(isRecording = true, playheadPosition = 1f)
-        startPlayheadTimer()
+        _project.value = _project.value.copy(isRecording = true)
+
+        regionIdCounter++
+        updateTrack(armedTrack.id) { track ->
+            val cleaned = track.regions.filter { it.name != "Recording..." }
+            track.copy(regions = cleaned + AudioRegion(regionIdCounter, "Recording...", recordStartBar, 0.5f, null))
+        }
+
+        startPlayheadTimer(recordStartBar)
         audioEngine.startRecording(getRecordFile(), getApplication(), armedTrack.inputSource)
     }
 
@@ -158,15 +177,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val bpm = _project.value.bpm
         val msPerBar = (60_000L / bpm) * 4
         val durationMs = (pcm.size.toLong() * 1000) / (AudioEngine.SAMPLE_RATE * AudioEngine.CHANNELS)
-        val widthBars = (durationMs.toFloat() / msPerBar).coerceAtLeast(1f).coerceAtMost((totalBars - 1).toFloat())
+        val widthBars = (durationMs.toFloat() / msPerBar).coerceAtLeast(1f).coerceAtMost((totalBars - recordStartBar).toFloat())
         val waveform = audioEngine.generateWaveformFromRegion(pcm, AudioEngine.CHANNELS, 1f, widthBars, totalBars)
 
         regionIdCounter++
         updateTrack(armedTrackId) { track ->
             val cleaned = track.regions.filter { it.name != "Recording..." }
-            track.copy(regions = cleaned + AudioRegion(regionIdCounter, "Recording.wav", 1f, widthBars, waveform))
+            track.copy(regions = cleaned + AudioRegion(regionIdCounter, "Recording.wav", recordStartBar, widthBars, waveform))
         }
-        _project.value = _project.value.copy(playheadPosition = 1f)
+        _project.value = _project.value.copy(playheadPosition = recordStartBar)
         _message.value = "Rekaman selesai (${audioEngine.getDurationMs()}ms)"
     }
 
@@ -965,9 +984,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return last
     }
 
-    private fun startPlayheadTimer() {
+    private fun startPlayheadTimer(startBar: Float = 1f) {
         stopPlayheadTimer()
         val msPerBar = (60_000.0 / _project.value.bpm) * 4
+        val startOffsetMs = ((startBar - 1f) * msPerBar).toLong()
+        recordStartTimeMs = System.currentTimeMillis() - startOffsetMs
         playheadJob = viewModelScope.launch {
             while (isActive) {
                 delay(16)

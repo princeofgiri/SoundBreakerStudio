@@ -63,6 +63,7 @@ class AudioEngine {
 
     var onAmplitude: ((Float) -> Unit)? = null
     var onRecordComplete: ((File) -> Unit)? = null
+    var onRecordingWaveform: ((FloatArray) -> Unit)? = null
     var onPlaybackPosition: ((Int, Int) -> Unit)? = null
     var onPlaybackFinished: (() -> Unit)? = null
     var onTrackAmplitudes: ((List<Float>) -> Unit)? = null
@@ -107,6 +108,7 @@ class AudioEngine {
 
         recordJob = scope.launch {
             val buffer = ShortArray(bufferSize / BYTES_PER_SAMPLE)
+            var chunkCount = 0
 
             while (isActive && isRecording) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
@@ -117,6 +119,24 @@ class AudioEngine {
 
                     val maxAmplitude = copy.maxOfOrNull { Math.abs(it.toInt()) } ?: 0
                     onAmplitude?.invoke(maxAmplitude / Short.MAX_VALUE.toFloat())
+
+                    chunkCount++
+                    if (chunkCount % 22 == 0 && onRecordingWaveform != null) {
+                        val pcm = mergeBuffers()
+                        if (pcm.isNotEmpty()) {
+                            val waveform = generateWaveformFromRegion(pcm, CHANNELS, 1f, 200f, 200, 200)
+                            onRecordingWaveform?.invoke(waveform)
+                        }
+                    }
+                }
+            }
+
+            // Final waveform update
+            if (onRecordingWaveform != null) {
+                val pcm = mergeBuffers()
+                if (pcm.isNotEmpty()) {
+                    val waveform = generateWaveformFromRegion(pcm, CHANNELS, 1f, 200f, 200, 200)
+                    onRecordingWaveform?.invoke(waveform)
                 }
             }
 
