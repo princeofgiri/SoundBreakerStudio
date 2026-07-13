@@ -130,11 +130,15 @@ class AudioEngine {
                         onAmplitude?.invoke(maxAmplitude / Short.MAX_VALUE.toFloat())
 
                         chunkCount++
-                        if (chunkCount % 22 == 0) {
+                        if (chunkCount % 5 == 0) {
                             try {
                                 val pcm = mergeBuffers()
                                 if (pcm.isNotEmpty()) {
-                                    onRecordingWaveform?.invoke(generatePeaksFromPcm(pcm, 200))
+                                    val maxSamples = SAMPLE_RATE * CHANNELS * 5
+                                    val startIdx = (pcm.size - maxSamples).coerceAtLeast(0)
+                                    val recentPcm = if (startIdx > 0) pcm.copyOfRange(startIdx, pcm.size) else pcm
+                                    val numPoints = ((recentPcm.size.toFloat() / CHANNELS / SAMPLE_RATE * 60 / 240) * 10).toInt().coerceIn(100, 400)
+                                    onRecordingWaveform?.invoke(generatePeaksFromPcm(recentPcm, numPoints))
                                 }
                             } catch (_: Exception) {}
                         }
@@ -1156,6 +1160,7 @@ class AudioEngine {
     }
 
     fun getRecordedPcm(): ShortArray = mergeBuffers()
+    fun getRecordedFrameCount(): Int = totalRecordedFrames
     fun getTotalRecordedFrames(): Int = totalRecordedFrames
     fun getDurationMs(): Int = (totalRecordedFrames.toLong() * 1000 / SAMPLE_RATE).toInt()
 

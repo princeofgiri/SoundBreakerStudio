@@ -107,13 +107,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         audioEngine.onRecordingWaveform = waveform@{ waveform ->
             val armedTrackId = _project.value.tracks.find { it.isArmed }?.id ?: return@waveform
-            val bpm = _project.value.bpm
-            val msPerBar = (60_000.0 / bpm) * 4
-            val currentPos = _project.value.playheadPosition
-            val elapsedWidth = (currentPos - recordStartBar).coerceAtLeast(0.5f)
             updateTrack(armedTrackId) { track ->
                 val regions = track.regions.map { region ->
-                    if (region.name == "Recording...") region.copy(waveform = waveform, widthBars = elapsedWidth)
+                    if (region.name == "Recording...") region.copy(waveform = waveform)
                     else region
                 }
                 track.copy(regions = regions)
@@ -1038,7 +1034,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     else { stopRecording(); break }
                 } else {
                     _project.value = _project.value.copy(playheadPosition = pos)
-                    // Grow recording region width in real-time
+                    // Grow recording region width from playhead
                     val elapsedWidth = (pos - recordStartBar).coerceAtLeast(0.5f)
                     val armedTrackId = _project.value.tracks.find { it.isArmed }?.id
                     if (armedTrackId != null) {
