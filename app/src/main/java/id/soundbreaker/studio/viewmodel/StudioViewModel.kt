@@ -609,6 +609,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun deleteSelectedRegion() {
         val regionId = _selectedRegionId.value ?: return
         val trackId = _project.value.tracks.find { it.regions.any { r -> r.id == regionId } }?.id ?: return
+        _trackPcmData.remove(trackId)
         updateTrack(trackId) { track -> track.copy(regions = track.regions.filter { it.id != regionId }) }
         _selectedRegionId.value = null
         _message.value = "Region dihapus"
