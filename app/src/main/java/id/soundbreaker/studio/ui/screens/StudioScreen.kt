@@ -72,6 +72,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
     var saveNameText by remember { mutableStateOf(project.name) }
     var showBpmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showTimeSigDialog by remember { mutableStateOf(false) }
     var exportFileName by remember { mutableStateOf("") }
     var exportFolderUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var exportFolderPath by remember { mutableStateOf("/sdcard/Music") }
@@ -330,6 +331,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onRewind = { viewModel.rewind() }, onFastForward = { viewModel.fastForward() },
                     onLoopToggle = { viewModel.toggleLoop() }, onClickToggle = { viewModel.toggleClick() },
                     onBpmClick = { showBpmDialog = true },
+                    onTimeSigClick = { showTimeSigDialog = true },
                 )
             }
             if (activeTab != "Mix") {
@@ -452,6 +454,74 @@ fun StudioScreen(viewModel: StudioViewModel) {
             dismissButton = { TextButton(onClick = { showBpmDialog = false }) { Text("Cancel", color = TextMuted) } },
         )
     }
+
+    // Time Signature Dialog
+    if (showTimeSigDialog) {
+        val presets = listOf(4 to 4, 3 to 4, 2 to 4, 6 to 8, 2 to 2, 5 to 4, 7 to 8, 12 to 8)
+        var customNum by remember { mutableStateOf("4") }
+        var customDen by remember { mutableStateOf("4") }
+        var isCustom by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showTimeSigDialog = false },
+            containerColor = Color(0xFF1A1A1A), titleContentColor = TextPrimary,
+            title = { Text("Time Signature") },
+            text = {
+                Column {
+                    // Preset grid: 4 columns
+                    for (row in presets.chunked(4)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for ((num, den) in row) {
+                                val isSelected = !isCustom && project.timeSignatureNumerator == num && project.timeSignatureDenominator == den
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) AccentBlue.copy(alpha = 0.3f) else Color(0xFF252525))
+                                        .clickable {
+                                            isCustom = false
+                                            viewModel.setTimeSignature(num, den)
+                                            showTimeSigDialog = false
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text("$num/$den", color = if (isSelected) AccentBlue else TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                    // Custom row
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = customNum, onValueChange = { customNum = it.filter { c -> c.isDigit() } },
+                            singleLine = true, modifier = Modifier.width(50.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentBlue, unfocusedBorderColor = DarkBorderLight, cursorColor = AccentBlue),
+                        )
+                        Text("/", color = TextMuted, fontSize = 16.sp)
+                        OutlinedTextField(
+                            value = customDen, onValueChange = { customDen = it.filter { c -> c.isDigit() } },
+                            singleLine = true, modifier = Modifier.width(50.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentBlue, unfocusedBorderColor = DarkBorderLight, cursorColor = AccentBlue),
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            val n = customNum.toIntOrNull() ?: 4
+                            val d = customDen.toIntOrNull() ?: 4
+                            viewModel.setTimeSignature(n, d)
+                            showTimeSigDialog = false
+                        }) {
+                            Text("Apply", color = AccentBlue)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showTimeSigDialog = false }) { Text("Close", color = TextMuted) } },
+        )
+    }
 }
 
 @Composable
@@ -463,6 +533,7 @@ private fun TransportBar(
     onRewind: () -> Unit, onFastForward: () -> Unit,
     onLoopToggle: () -> Unit, onClickToggle: () -> Unit,
     onBpmClick: () -> Unit = {},
+    onTimeSigClick: () -> Unit = {},
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -477,7 +548,7 @@ private fun TransportBar(
         Spacer(modifier = Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.clickable { onBpmClick() }) { Text("BPM", color = TextMuted, fontSize = 12.sp); Text("$bpm", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Text("Time Sig", color = TextMuted, fontSize = 12.sp); Text(timeSignature, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.clickable { onTimeSigClick() }) { Text("Time Sig", color = TextMuted, fontSize = 12.sp); Text(timeSignature, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { MiniToggle(isLooping, AccentGreen, onLoopToggle); Text("Loop", color = TextMuted, fontSize = 12.sp) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text("Click", color = TextMuted, fontSize = 12.sp); MiniToggle(isClickOn, AccentOrange, onClickToggle) }
         }

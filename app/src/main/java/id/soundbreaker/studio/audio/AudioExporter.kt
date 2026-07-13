@@ -26,6 +26,7 @@ class AudioExporter(
         val masterEqEnabled: Boolean,
         val masterVolume: Float,
         val masterPan: Float,
+        val beatsPerBar: Int = 4,
     )
 
     fun exportToWav(config: ExportConfig, outputFile: File, onProgress: ((Float) -> Unit)? = null): Boolean {
@@ -104,7 +105,7 @@ class AudioExporter(
                 }
 
                 if (config.isClickOn && config.bpm > 0) {
-                    mixClickTrack(stereoOutput, framesToMix, framesWritten, config.bpm)
+                    mixClickTrack(stereoOutput, framesToMix, framesWritten, config.bpm, config.beatsPerBar)
                 }
 
                 if (config.masterEqEnabled) {
@@ -145,14 +146,14 @@ class AudioExporter(
         }
     }
 
-    private fun mixClickTrack(output: ShortArray, frames: Int, startFrame: Int, bpm: Int) {
+    private fun mixClickTrack(output: ShortArray, frames: Int, startFrame: Int, bpm: Int, beatsPerBar: Int = 4) {
         val framesPerBeat = (sampleRate.toLong() * 60 / bpm).toInt()
         val clickDuration = (sampleRate * 0.005).toInt().coerceAtLeast(1)
         for (i in 0 until frames) {
             val framePos = startFrame + i
             val posInBeat = framePos % framesPerBeat
             if (posInBeat < clickDuration) {
-                val freq = if (framePos / framesPerBeat % 4 == 0) 1000f else 800f
+                val freq = if (framePos / framesPerBeat % beatsPerBar == 0) 1000f else 800f
                 val progress = posInBeat.toFloat() / clickDuration
                 val envelope = (1f - progress) * 0.5f
                 val sample = (Math.sin(2.0 * Math.PI * freq * posInBeat / sampleRate) * Short.MAX_VALUE * envelope).toInt().toShort()

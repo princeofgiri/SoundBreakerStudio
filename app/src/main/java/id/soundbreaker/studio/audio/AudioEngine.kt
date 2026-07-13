@@ -48,6 +48,7 @@ class AudioEngine {
         val bpm: Int = 120,
         val isClickOn: Boolean = false,
         val trackOffsets: List<Int> = emptyList(),
+        val beatsPerBar: Int = 4,
     )
 
     @Volatile private var playbackState = PlaybackState(emptyList(), emptyList(), emptyList(), emptyList())
@@ -187,7 +188,7 @@ class AudioEngine {
         recordJob?.cancel()
     }
 
-    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false, trackOffsets: List<Int> = emptyList()) {
+    fun startPlaybackFromPosition(trackPcmData: List<ShortArray>, startFrame: Int, volumes: List<Float> = emptyList(), pans: List<Float> = emptyList(), eq: List<Triple<Float, Float, Float>> = emptyList(), effects: List<List<id.soundbreaker.studio.data.Effect>> = emptyList(), bpm: Int = 120, isClickOn: Boolean = false, trackOffsets: List<Int> = emptyList(), beatsPerBar: Int = 4) {
         if (isPlaying) stopPlayback()
 
         val minBuffer = AudioTrack.getMinBufferSize(
@@ -224,6 +225,7 @@ class AudioEngine {
             bpm = bpm,
             isClickOn = isClickOn,
             trackOffsets = if (trackOffsets.size == trackPcmData.size) trackOffsets else trackPcmData.map { 0 },
+            beatsPerBar = beatsPerBar,
         )
         initEqFilters()
         playbackPosition = startFrame.coerceAtLeast(0)
@@ -233,11 +235,15 @@ class AudioEngine {
 
         playJob = scope.launch {
             val framesPerChunk = 2048
-            val totalFrames = trackPcmData.indices.maxOfOrNull { idx ->
+            val totalFramesFromPcm = trackPcmData.indices.maxOfOrNull { idx ->
                 val pcmFrames = trackPcmData[idx].size / 2
                 val offset = if (idx < trackOffsets.size) trackOffsets[idx] else 0
                 pcmFrames + offset
             } ?: 0
+            // If click is on but no audio, run for 5 minutes so click can play
+            val totalFrames = if (totalFramesFromPcm == 0 && playbackState.isClickOn) {
+                SAMPLE_RATE * 300 // 5 minutes
+            } else totalFramesFromPcm
 
             while (isActive && isPlaying && playbackPosition < totalFrames) {
                 if (isPaused) {
@@ -273,7 +279,7 @@ class AudioEngine {
                 }
 
                 if (state.isClickOn && state.bpm > 0) {
-                    mixClickTrack(stereoOutput, framesToRead, playbackPosition, state.bpm)
+                    mixClickTrack(stereoOutput, framesToRead, playbackPosition, state.bpm, state.beatsPerBar)
                 }
 
                 // Apply master EQ
@@ -541,7 +547,7 @@ class AudioEngine {
                 val st = playbackState
                 val framesToRead = minOf(framesPerChunk, totalFrames - playbackPosition)
                 val stereoOutput = mixMultipleTracks(st.buffers, playbackPosition, framesToRead, st.volumes, st.pans, st.trackOffsets)
-                if (st.isClickOn && st.bpm > 0) mixClickTrack(stereoOutput, framesToRead, playbackPosition, st.bpm)
+                if (st.isClickOn && st.bpm > 0) mixClickTrack(stereoOutput, framesToRead, playbackPosition, st.bpm, st.beatsPerBar)
                 val mv = masterVolume; val mp = masterPan
                 val mpLeft = kotlin.math.cos(mp.toDouble() * Math.PI / 2.0).toFloat()
                 val mpRight = kotlin.math.sin(mp.toDouble() * Math.PI / 2.0).toFloat()
@@ -1216,7 +1222,7 @@ class AudioEngine {
         }
     }
 
-    private fun mixClickTrack(output: ShortArray, frames: Int, startFrame: Int, bpm: Int) {
+    private fun mixClickTrack(output: ShortArray, frames: Int, startFrame: Int, bpm: Int, beatsPerBar: Int = 4) {
         val framesPerBeat = (SAMPLE_RATE.toLong() * 60 / bpm).toInt()
         val clickDuration = (SAMPLE_RATE * 0.005).toInt().coerceAtLeast(1) // 5ms click
         val clickFreqDown = 1000f
@@ -1226,7 +1232,7 @@ class AudioEngine {
             val framePos = startFrame + i
             val posInBeat = framePos % framesPerBeat
             if (posInBeat < clickDuration) {
-                val freq = if (framePos / framesPerBeat % 4 == 0) clickFreqDown else clickFreqUp
+                val freq = if (framePos / framesPerBeat % beatsPerBar == 0) clickFreqDown else clickFreqUp
                 val progress = posInBeat.toFloat() / clickDuration
                 val envelope = (1f - progress) * 0.5f
                 val sample = (Math.sin(2.0 * Math.PI * freq * posInBeat / SAMPLE_RATE) * Short.MAX_VALUE * envelope).toInt().toShort()

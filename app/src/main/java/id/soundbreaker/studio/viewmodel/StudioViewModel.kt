@@ -91,7 +91,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         audioEngine.onPlaybackPosition = playbackPos@{ current, _ ->
             if (_isRecording.value) return@playbackPos
             val timeMs = (current.toLong() * 1000) / AudioEngine.SAMPLE_RATE
-            val msPerBar = (60_000L / _project.value.bpm) * 4
+            val msPerBar = getMsPerBar().toLong()
             val pos = (timeMs.toFloat() / msPerBar) + 1f
             _project.value = _project.value.copy(playheadPosition = pos.coerceAtMost(totalBars.toFloat()))
         }
@@ -167,14 +167,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun startOverdubPlayback(fromBar: Float) {
         val pcmList = getFilteredPcmList()
-        if (pcmList.all { it.isEmpty() }) return
+        if (pcmList.all { it.isEmpty() } && !_project.value.isClickOn) return
 
-        val msPerBar = (60_000.0 / _project.value.bpm) * 4
+        val msPerBar = getMsPerBar()
         val posMs = ((fromBar - 1f) * msPerBar).toLong()
         val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
 
         _project.value = _project.value.copy(isPlaying = true)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets())
+        android.util.Log.e("SB", "startOverdub: startFrame=$startFrame, clickOn=${_project.value.isClickOn}, pcmTracks=${pcmList.count { it.isNotEmpty() }}, bpm=${_project.value.bpm}, beatsPerBar=${getBeatsPerBar()}")
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets(), getBeatsPerBar())
     }
 
     fun stopRecording() {
@@ -204,10 +205,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val armedTrackId = _project.value.tracks.find { it.isArmed }?.id ?: _selectedTrackId.value
             _trackPcmData[armedTrackId] = pcm
 
-            val bpm = _project.value.bpm
-            val msPerBar = (60_000L / bpm) * 4
+            val msPerBar = getMsPerBar()
             val durationMs = (pcm.size.toLong() * 1000) / (AudioEngine.SAMPLE_RATE * AudioEngine.CHANNELS)
-            val widthBars = (durationMs.toFloat() / msPerBar).coerceAtLeast(1f).coerceAtMost((totalBars - recordStartBar).toFloat())
+            val widthBars = (durationMs.toFloat() / msPerBar.toFloat()).coerceAtLeast(1f).coerceAtMost((totalBars - recordStartBar).toFloat())
             val waveform = audioEngine.generateWaveformFromRegion(pcm, AudioEngine.CHANNELS, 1f, widthBars, totalBars)
 
             regionIdCounter++
@@ -262,6 +262,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return _project.value.tracks.map { it.effects }
     }
 
+    private fun getBeatsPerBar(): Int {
+        val p = _project.value
+        return if (p.timeSignatureDenominator == 8) p.timeSignatureNumerator / 3 else p.timeSignatureNumerator
+    }
+
     private fun getTrackOffsets(): List<Int> {
         val bpm = _project.value.bpm
         val framesPerBar = (AudioEngine.SAMPLE_RATE.toLong() * 60 * 4) / bpm
@@ -278,23 +283,23 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (pcmList.all { it.isEmpty() }) { _message.value = "Tidak ada audio"; return }
         _isPlaying.value = true
         _isRecording.value = false
-        val msPerBar = (60_000.0 / _project.value.bpm) * 4
+        val msPerBar = getMsPerBar()
         val posMs = ((_project.value.playheadPosition - 1f) * msPerBar).toLong()
         val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
         _project.value = _project.value.copy(isPlaying = true)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets())
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets(), getBeatsPerBar())
     }
 
     fun startPlaybackFromPosition(bar: Float) {
         val pcmList = getFilteredPcmList()
         if (pcmList.all { it.isEmpty() }) { _message.value = "Tidak ada audio"; return }
-        val msPerBar = (60_000.0 / _project.value.bpm) * 4
+        val msPerBar = getMsPerBar()
         val posMs = ((bar - 1f) * msPerBar).toLong()
         val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
         _isPlaying.value = true
         _isRecording.value = false
         _project.value = _project.value.copy(isPlaying = true, playheadPosition = bar)
-        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets())
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets(), getBeatsPerBar())
     }
 
     fun stopPlayback() {
@@ -374,6 +379,24 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         _project.value = _project.value.copy(bpm = newBpm, tracks = scaledTracks)
         if (_isPlaying.value) audioEngine.updatePlaybackBuffers(getFilteredPcmList(), getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn)
+    }
+
+    fun setTimeSignature(numerator: Int, denominator: Int) {
+        val n = numerator.coerceIn(1, 12)
+        val d = denominator.coerceIn(2, 8)
+        if (_project.value.timeSignatureNumerator == n && _project.value.timeSignatureDenominator == d) return
+        _project.value = _project.value.copy(timeSignatureNumerator = n, timeSignatureDenominator = d)
+    }
+
+    private fun getMsPerBar(): Double {
+        val project = _project.value
+        // Time signature affects beats per bar: e.g. 6/8 = 2 beats of 3 eighth notes
+        val beatsPerBar = if (project.timeSignatureDenominator == 8) {
+            project.timeSignatureNumerator / 3.0  // compound meter: 6/8 = 2 beats, 12/8 = 4 beats
+        } else {
+            project.timeSignatureNumerator.toDouble()  // simple meter: 4/4 = 4 beats, 3/4 = 3 beats
+        }
+        return (60_000.0 / project.bpm) * beatsPerBar
     }
     fun setMasterVolume(volume: Float) {
         _masterVolume.value = volume.coerceIn(0f, 1f)
@@ -603,7 +626,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     val targetId = _selectedTrackId.value
                     _trackPcmData[targetId] = pcmData
 
-                    val msPerBar = (60_000L / _project.value.bpm) * 4
+                    val msPerBar = getMsPerBar().toLong()
                     val durationMs = (pcmData.size.toLong() * 1000) / (AudioEngine.SAMPLE_RATE * channels)
                     val widthBars = (durationMs.toFloat() / msPerBar).coerceAtLeast(1f).coerceAtMost((totalBars - 1).toFloat())
                     val waveform = audioEngine.generateWaveformFromRegion(pcmData, channels, 1f, widthBars, totalBars)
@@ -959,6 +982,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     masterEqEnabled = project.masterEqEnabled,
                     masterVolume = audioEngine.getMasterVolume(),
                     masterPan = audioEngine.getMasterPan(),
+                    beatsPerBar = getBeatsPerBar(),
                 )
 
                 val context = getApplication<Application>()
@@ -1021,7 +1045,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun startPlayheadTimer(startBar: Float = 1f) {
         stopPlayheadTimer()
-        val msPerBar = (60_000.0 / _project.value.bpm) * 4
+        val msPerBar = getMsPerBar()
         val startOffsetMs = ((startBar - 1f) * msPerBar).toLong()
         recordStartTimeMs = System.currentTimeMillis() - startOffsetMs
         playheadJob = viewModelScope.launch {

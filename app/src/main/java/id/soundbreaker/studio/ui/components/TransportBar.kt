@@ -30,6 +30,7 @@ fun TransportBar(
     onRecord: () -> Unit,
     onLoopToggle: () -> Unit,
     onClickToggle: () -> Unit,
+    onTimeSigClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -85,7 +86,9 @@ fun TransportBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TransportInfo("BPM", "$bpm")
-                TransportInfo("Time Sig", timeSignature)
+                Box(modifier = Modifier.clickable { onTimeSigClick() }) {
+                    TransportInfo("Time Sig", timeSignature)
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
