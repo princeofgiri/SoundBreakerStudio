@@ -88,13 +88,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         audioEngine.onAmplitude = { _amplitude.value = it }
-        audioEngine.onPlaybackPosition = { current, _ ->
+        audioEngine.onPlaybackPosition = playbackPos@{ current, _ ->
+            if (_isRecording.value) return@playbackPos
             val timeMs = (current.toLong() * 1000) / AudioEngine.SAMPLE_RATE
             val msPerBar = (60_000L / _project.value.bpm) * 4
             val pos = (timeMs.toFloat() / msPerBar) + 1f
             _project.value = _project.value.copy(playheadPosition = pos.coerceAtMost(totalBars.toFloat()))
         }
-        audioEngine.onPlaybackFinished = {
+        audioEngine.onPlaybackFinished = playbackDone@{
+            if (_isRecording.value) return@playbackDone
             _isPlaying.value = false
             _isPaused.value = false
             _project.value = _project.value.copy(isPlaying = false, playheadPosition = 1f)
