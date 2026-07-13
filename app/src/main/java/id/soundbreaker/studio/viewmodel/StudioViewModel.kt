@@ -162,13 +162,29 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             track.copy(regions = cleaned + AudioRegion(regionIdCounter, "Recording...", recordStartBar, 0.5f, null))
         }
 
+        // Start overdub: play all existing tracks while recording
+        startOverdubPlayback(recordStartBar)
         startPlayheadTimer(recordStartBar)
     }
 
+    private fun startOverdubPlayback(fromBar: Float) {
+        val pcmList = getFilteredPcmList()
+        if (pcmList.all { it.isEmpty() }) return
+
+        val msPerBar = (60_000.0 / _project.value.bpm) * 4
+        val posMs = ((fromBar - 1f) * msPerBar).toLong()
+        val startFrame = (posMs * AudioEngine.SAMPLE_RATE / 1000).toInt().coerceAtLeast(0)
+
+        _project.value = _project.value.copy(isPlaying = true)
+        audioEngine.startPlaybackFromPosition(pcmList, startFrame, getTrackVolumes(), getTrackPans(), getTrackEq(), getTrackEffects(), _project.value.bpm, _project.value.isClickOn, getTrackOffsets())
+    }
+
     fun stopRecording() {
+        audioEngine.stopPlayback()
         audioEngine.stopRecording()
         _isRecording.value = false
-        _project.value = _project.value.copy(isRecording = false)
+        _isPlaying.value = false
+        _project.value = _project.value.copy(isRecording = false, isPlaying = false)
         stopPlayheadTimer()
         // Delay finalizeRecording to let recordJob finish cleanup
         viewModelScope.launch {
