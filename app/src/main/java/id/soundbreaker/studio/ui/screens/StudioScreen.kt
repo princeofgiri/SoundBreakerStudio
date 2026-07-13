@@ -73,6 +73,7 @@ fun StudioScreen(viewModel: StudioViewModel) {
     var showBpmDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showTimeSigDialog by remember { mutableStateOf(false) }
+    var showChordDialog by remember { mutableStateOf(false) }
     var exportFileName by remember { mutableStateOf("") }
     var exportFolderUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var exportFolderPath by remember { mutableStateOf("/sdcard/Music") }
@@ -332,6 +333,8 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     onLoopToggle = { viewModel.toggleLoop() }, onClickToggle = { viewModel.toggleClick() },
                     onBpmClick = { showBpmDialog = true },
                     onTimeSigClick = { showTimeSigDialog = true },
+                    currentChord = viewModel.getCurrentChord(),
+                    onChordClick = { showChordDialog = true },
                 )
             }
             if (activeTab != "Mix") {
@@ -522,6 +525,85 @@ fun StudioScreen(viewModel: StudioViewModel) {
             dismissButton = { TextButton(onClick = { showTimeSigDialog = false }) { Text("Close", color = TextMuted) } },
         )
     }
+
+    // Chord Dialog
+    if (showChordDialog) {
+        val majorChords = listOf("C♯/D♭", "F♯/G♭", "B", "E", "A", "D", "G", "C", "F", "B♭", "E♭", "A♭", "D♭", "G♭", "C♭")
+        val minorChords = listOf("A♯/B♭", "D♯/E♭", "G♯/A♭", "C♯/D♭", "F♯/G♭", "B", "E", "A", "D", "G", "C", "F", "B♭", "E♭", "A♭")
+        val currentChord = viewModel.getCurrentChord()
+
+        AlertDialog(
+            onDismissRequest = { showChordDialog = false },
+            containerColor = Color(0xFF1A1A1A), titleContentColor = TextPrimary,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Chord", modifier = Modifier.weight(1f))
+                    if (project.chordMarkers.isNotEmpty()) {
+                        TextButton(onClick = { viewModel.removeLastChord() }) {
+                            Text("Undo Last", color = AccentRed, fontSize = 12.sp)
+                        }
+                    }
+                }
+            },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (currentChord != null) {
+                        Text("Current: $currentChord (bar ${String.format("%.1f", project.playheadPosition)})", color = TextMuted, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    Text("Major", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    for (row in majorChords.chunked(5)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (chord in row) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF252525))
+                                        .clickable {
+                                            viewModel.addChord("$chord Major")
+                                            showChordDialog = false
+                                        }
+                                        .padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(chord, color = TextPrimary, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("Minor", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    for (row in minorChords.chunked(5)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (chord in row) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF252525))
+                                        .clickable {
+                                            viewModel.addChord("$chord Minor")
+                                            showChordDialog = false
+                                        }
+                                        .padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(chord, color = TextPrimary, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showChordDialog = false }) { Text("Close", color = TextMuted) } },
+        )
+    }
 }
 
 @Composable
@@ -534,6 +616,8 @@ private fun TransportBar(
     onLoopToggle: () -> Unit, onClickToggle: () -> Unit,
     onBpmClick: () -> Unit = {},
     onTimeSigClick: () -> Unit = {},
+    currentChord: String? = null,
+    onChordClick: () -> Unit = {},
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -549,6 +633,7 @@ private fun TransportBar(
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.clickable { onBpmClick() }) { Text("BPM", color = TextMuted, fontSize = 12.sp); Text("$bpm", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.clickable { onTimeSigClick() }) { Text("Time Sig", color = TextMuted, fontSize = 12.sp); Text(timeSignature, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.clickable { onChordClick() }) { Text("Chord", color = TextMuted, fontSize = 12.sp); Text(currentChord ?: "—", color = AccentGreen, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { MiniToggle(isLooping, AccentGreen, onLoopToggle); Text("Loop", color = TextMuted, fontSize = 12.sp) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text("Click", color = TextMuted, fontSize = 12.sp); MiniToggle(isClickOn, AccentOrange, onClickToggle) }
         }

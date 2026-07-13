@@ -388,6 +388,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _project.value = _project.value.copy(timeSignatureNumerator = n, timeSignatureDenominator = d)
     }
 
+    fun addChord(chord: String) {
+        val bar = _project.value.playheadPosition
+        val chords = (_project.value.chordMarkers + ChordMarker(bar, chord)).sortedBy { it.bar }
+        _project.value = _project.value.copy(chordMarkers = chords)
+    }
+
+    fun removeLastChord() {
+        val chords = _project.value.chordMarkers.dropLast(1)
+        _project.value = _project.value.copy(chordMarkers = chords)
+    }
+
+    fun getCurrentChord(): String? {
+        val pos = _project.value.playheadPosition
+        return _project.value.chordMarkers.lastOrNull { it.bar <= pos }?.chord
+    }
+
     private fun getMsPerBar(): Double {
         val project = _project.value
         // Time signature affects beats per bar: e.g. 6/8 = 2 beats of 3 eighth notes
@@ -747,6 +763,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         customPresetsObj.put(name, JSONArray(bands.map { it.toDouble() }))
                     }
                     put("customPresets", customPresetsObj)
+                    val chordsArray = JSONArray()
+                    _project.value.chordMarkers.forEach { marker ->
+                        chordsArray.put(JSONObject().apply {
+                            put("bar", marker.bar.toDouble())
+                            put("chord", marker.chord)
+                        })
+                    }
+                    put("chordMarkers", chordsArray)
                 }
 
                 File(dir, "project.json").writeText(root.toString(2))
@@ -786,6 +810,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val masterEq = if (masterEqArray != null) {
                     (0 until masterEqArray.length()).map { masterEqArray.getDouble(it).toFloat() }
                 } else List(10) { 0f }
+                val chordMarkers = mutableListOf<ChordMarker>()
+                val chordsArray = root.optJSONArray("chordMarkers")
+                if (chordsArray != null) {
+                    for (i in 0 until chordsArray.length()) {
+                        val obj = chordsArray.getJSONObject(i)
+                        chordMarkers.add(ChordMarker(obj.getDouble("bar").toFloat(), obj.getString("chord")))
+                    }
+                }
                 val tracksJson = root.getJSONArray("tracks")
 
                 val newTracks = mutableListOf<Track>()
@@ -935,7 +967,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                              masterEq = masterEq,
                              masterEqPreset = masterEqPreset,
                              masterEqEnabled = masterEqEnabled,
-                             customPresets = customPresets
+                             customPresets = customPresets,
+                             chordMarkers = chordMarkers,
                          )
                          audioEngine.setMasterEq(masterEq)
                          audioEngine.setMasterEqEnabled(masterEqEnabled)

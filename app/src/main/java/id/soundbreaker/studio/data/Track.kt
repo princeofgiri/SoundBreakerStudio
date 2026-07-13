@@ -56,6 +56,8 @@ enum class EffectType(val displayName: String, val defaultParams: Map<String, Fl
     FILTER("Filter", mapOf("cutoff" to 0.8f, "resonance" to 0.3f)),
 }
 
+data class ChordMarker(val bar: Float, val chord: String)
+
 data class ProjectState(
     val name: String = "My Song 01",
     val bpm: Int = 120,
@@ -75,6 +77,7 @@ data class ProjectState(
     val masterEqPreset: String = "Flat",
     val masterEqEnabled: Boolean = true,
     val customPresets: Map<String, List<Float>> = emptyMap(),
+    val chordMarkers: List<ChordMarker> = emptyList(),
 )
 
 fun defaultTracks(): List<Track> = listOf(
