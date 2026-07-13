@@ -232,6 +232,10 @@ fun StudioScreen(viewModel: StudioViewModel) {
                     hasTracks = project.tracks.isNotEmpty(),
                     isInspectorVisible = isInspectorVisible,
                     onToggleInspector = { viewModel.toggleInspector() },
+                    canUndo = viewModel.canUndo,
+                    canRedo = viewModel.canRedo,
+                    onUndo = { viewModel.undo() },
+                    onRedo = { viewModel.redo() },
                 )
                 if (project.tracks.isEmpty()) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth().background(DarkBackground))

@@ -46,6 +46,10 @@ fun TimelineToolbar(
     hasTracks: Boolean = false,
     isInspectorVisible: Boolean = true,
     onToggleInspector: () -> Unit = {},
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -56,6 +60,28 @@ fun TimelineToolbar(
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Undo/Redo (leftmost)
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (canUndo) Color(0xFF222222) else Color(0xFF181818))
+                .clickable(enabled = canUndo) { onUndo() },
+            contentAlignment = Alignment.Center,
+        ) { Text("↶", color = if (canUndo) TextSecondary else Color(0xFF333333), fontSize = 16.sp) }
+        Spacer(modifier = Modifier.width(4.dp))
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (canRedo) Color(0xFF222222) else Color(0xFF181818))
+                .clickable(enabled = canRedo) { onRedo() },
+            contentAlignment = Alignment.Center,
+        ) { Text("↷", color = if (canRedo) TextSecondary else Color(0xFF333333), fontSize = 16.sp) }
+
+        Spacer(modifier = Modifier.width(20.dp))
+
+        // Tool buttons
         val tools = listOf("⬚", "✂", "🔗", "✎", "✕")
         tools.forEachIndexed { index, tool ->
             val isActive = index == 0

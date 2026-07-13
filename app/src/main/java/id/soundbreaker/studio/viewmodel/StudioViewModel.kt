@@ -86,6 +86,44 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var recordStartBar: Float = 1f
     private val totalBars = 200
 
+    // Undo/Redo
+    private data class UndoSnapshot(val project: ProjectState, val pcmData: Map<Int, ShortArray>)
+    private val undoStack = ArrayDeque<UndoSnapshot>(10)
+    private val redoStack = ArrayDeque<UndoSnapshot>(10)
+    private var isUndoRedoAction = false
+
+    private fun pushUndoSnapshot() {
+        if (isUndoRedoAction) return
+        undoStack.addLast(UndoSnapshot(_project.value, HashMap(_trackPcmData)))
+        if (undoStack.size > 10) undoStack.removeFirst()
+        redoStack.clear()
+    }
+
+    fun undo() {
+        if (undoStack.isEmpty()) return
+        isUndoRedoAction = true
+        redoStack.addLast(UndoSnapshot(_project.value, HashMap(_trackPcmData)))
+        val snapshot = undoStack.removeLast()
+        _project.value = snapshot.project
+        _trackPcmData.clear()
+        _trackPcmData.putAll(snapshot.pcmData)
+        isUndoRedoAction = false
+    }
+
+    fun redo() {
+        if (redoStack.isEmpty()) return
+        isUndoRedoAction = true
+        undoStack.addLast(UndoSnapshot(_project.value, HashMap(_trackPcmData)))
+        val snapshot = redoStack.removeLast()
+        _project.value = snapshot.project
+        _trackPcmData.clear()
+        _trackPcmData.putAll(snapshot.pcmData)
+        isUndoRedoAction = false
+    }
+
+    val canUndo: Boolean get() = undoStack.isNotEmpty()
+    val canRedo: Boolean get() = redoStack.isNotEmpty()
+
     init {
         audioEngine.onAmplitude = { _amplitude.value = it }
         audioEngine.onPlaybackPosition = playbackPos@{ current, _ ->
@@ -224,6 +262,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 _project.value = _project.value.copy(isRecording = false)
                 return
             }
+            pushUndoSnapshot()
 
             val armedTrackId = _project.value.tracks.find { it.isArmed }?.id ?: _selectedTrackId.value
             _trackPcmData[armedTrackId] = pcm
@@ -609,6 +648,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun deleteSelectedRegion() {
         val regionId = _selectedRegionId.value ?: return
         val trackId = _project.value.tracks.find { it.regions.any { r -> r.id == regionId } }?.id ?: return
+        pushUndoSnapshot()
         _trackPcmData.remove(trackId)
         updateTrack(trackId) { track -> track.copy(regions = track.regions.filter { it.id != regionId }) }
         _selectedRegionId.value = null
@@ -626,6 +666,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun addTrack(type: TrackType = TrackType.AUDIO_STEREO) {
+        pushUndoSnapshot()
         val colors = listOf(0xFFFF4757L, 0xFF3498DBL, 0xFF2ED573L, 0xFFFFA502L, 0xFFA29BFEL, 0xFFFD79A8L, 0xFF00CEC9L, 0xFFE17055L, 0xFF6C5CE7L)
         val names = mapOf(TrackType.AUDIO_MONO to "Audio", TrackType.AUDIO_STEREO to "Audio", TrackType.MIDI_INSTRUMENT to "MIDI", TrackType.MIDI_DRUM to "Drums")
         val count = _project.value.tracks.size
@@ -635,6 +676,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun removeTrack(trackId: Int) {
+        pushUndoSnapshot()
         // Delete WAV file from project directory if it exists
         val track = _project.value.tracks.find { it.id == trackId }
         if (track != null) {
@@ -649,6 +691,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun importAudio(uri: android.net.Uri) {
+        pushUndoSnapshot()
         val context = getApplication<Application>()
         _message.value = "Mengimport audio..."
         viewModelScope.launch(Dispatchers.IO) {
