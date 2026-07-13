@@ -148,6 +148,30 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (armedTrack == null) { _message.value = "Arm track dulu (tap R)"; return }
 
         recordStartBar = _project.value.playheadPosition
+
+        if (_project.value.isClickOn) {
+            // Count-in: play click for 1 bar before recording
+            startCountIn()
+        } else {
+            startActualRecording()
+        }
+    }
+
+    private fun startCountIn() {
+        val msPerBar = getMsPerBar()
+
+        // Play click for 1 bar via dedicated click-only method (no playhead movement)
+        audioEngine.startClickOnly(_project.value.bpm, getBeatsPerBar(), 1)
+
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(msPerBar.toLong())
+            audioEngine.stopPlayback()
+            startActualRecording()
+        }
+    }
+
+    private fun startActualRecording() {
+        val armedTrack = _project.value.tracks.find { it.isArmed } ?: return
         val ok = audioEngine.startRecording(getRecordFile(), getApplication(), armedTrack.inputSource)
         if (!ok) { _message.value = "Gagal mulai rekam"; return }
 
@@ -160,7 +184,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             track.copy(regions = cleaned + AudioRegion(regionIdCounter, "Recording...", recordStartBar, 0.5f, null))
         }
 
-        // Start overdub: play all existing tracks while recording
         startOverdubPlayback(recordStartBar)
         startPlayheadTimer(recordStartBar)
     }

@@ -327,6 +327,66 @@ class AudioEngine {
         startPlayback(listOf(pcmData))
     }
 
+    fun startClickOnly(bpm: Int, beatsPerBar: Int, numBars: Int) {
+        stopPlayback()
+
+        val minBuffer = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG_OUT, AUDIO_FORMAT)
+        val bufferSize = (minBuffer * 2).coerceAtLeast(8192)
+        val clickTrack = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(SAMPLE_RATE)
+                    .setChannelMask(CHANNEL_CONFIG_OUT)
+                    .setEncoding(AUDIO_FORMAT)
+                    .build()
+            )
+            .setBufferSizeInBytes(bufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+
+        preferredOutputDeviceInfo?.let { clickTrack.setPreferredDevice(it) }
+
+        isPlaying = true
+        clickTrack.play()
+
+        playJob = scope.launch {
+            val framesPerBeat = (SAMPLE_RATE.toLong() * 60 / bpm).toInt()
+            val clickDuration = (SAMPLE_RATE * 0.005).toInt().coerceAtLeast(1)
+            val totalFrames = framesPerBeat * beatsPerBar * numBars
+            val buf = ShortArray(framesPerBeat * 2)
+
+            for (beat in 0 until beatsPerBar * numBars) {
+                buf.fill(0)
+                // Generate click for this beat
+                val freq = if (beat % beatsPerBar == 0) 1000f else 800f
+                val clickFrames = minOf(clickDuration, framesPerBeat)
+                for (i in 0 until clickFrames) {
+                    val progress = i.toFloat() / clickDuration
+                    val envelope = (1f - progress) * 0.5f
+                    val sample = (Math.sin(2.0 * Math.PI * freq * i.toDouble() / SAMPLE_RATE) * Short.MAX_VALUE * envelope).toInt().toShort()
+                    buf[i * 2] = sample
+                    buf[i * 2 + 1] = sample
+                }
+                // Fill rest with silence
+                for (i in clickFrames until framesPerBeat) {
+                    buf[i * 2] = 0
+                    buf[i * 2 + 1] = 0
+                }
+                clickTrack.write(buf, 0, buf.size)
+            }
+
+            try { clickTrack.stop() } catch (_: Exception) {}
+            try { clickTrack.release() } catch (_: Exception) {}
+            isPlaying = false
+        }
+    }
+
     fun stopPlayback() {
         isPlaying = false
         playJob?.cancel()
