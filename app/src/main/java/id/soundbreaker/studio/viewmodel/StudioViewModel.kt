@@ -146,6 +146,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (armedTrack == null) { _message.value = "Arm track dulu (tap R)"; return }
 
         recordStartBar = _project.value.playheadPosition
+        val ok = audioEngine.startRecording(getRecordFile(), getApplication(), armedTrack.inputSource)
+        if (!ok) { _message.value = "Gagal mulai rekam"; return }
+
         _isRecording.value = true
         _project.value = _project.value.copy(isRecording = true)
 
@@ -156,7 +159,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         startPlayheadTimer(recordStartBar)
-        audioEngine.startRecording(getRecordFile(), getApplication(), armedTrack.inputSource)
     }
 
     fun stopRecording() {
@@ -164,29 +166,44 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _isRecording.value = false
         _project.value = _project.value.copy(isRecording = false)
         stopPlayheadTimer()
-        finalizeRecording()
+        // Delay finalizeRecording to let recordJob finish cleanup
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(200)
+            finalizeRecording()
+        }
     }
 
     private fun finalizeRecording() {
-        val pcm = audioEngine.getRecordedPcm()
-        if (pcm.isEmpty()) return
+        try {
+            val pcm = audioEngine.getRecordedPcm()
+            android.util.Log.e("SB", "finalizeRecording: pcm.size=${pcm.size}, recordStartBar=$recordStartBar")
+            if (pcm.isEmpty()) {
+                android.util.Log.e("SB", "finalizeRecording: pcm is EMPTY")
+                _project.value = _project.value.copy(isRecording = false)
+                return
+            }
 
-        val armedTrackId = _project.value.tracks.find { it.isArmed }?.id ?: _selectedTrackId.value
-        _trackPcmData[armedTrackId] = pcm
+            val armedTrackId = _project.value.tracks.find { it.isArmed }?.id ?: _selectedTrackId.value
+            _trackPcmData[armedTrackId] = pcm
 
-        val bpm = _project.value.bpm
-        val msPerBar = (60_000L / bpm) * 4
-        val durationMs = (pcm.size.toLong() * 1000) / (AudioEngine.SAMPLE_RATE * AudioEngine.CHANNELS)
-        val widthBars = (durationMs.toFloat() / msPerBar).coerceAtLeast(1f).coerceAtMost((totalBars - recordStartBar).toFloat())
-        val waveform = audioEngine.generateWaveformFromRegion(pcm, AudioEngine.CHANNELS, 1f, widthBars, totalBars)
+            val bpm = _project.value.bpm
+            val msPerBar = (60_000L / bpm) * 4
+            val durationMs = (pcm.size.toLong() * 1000) / (AudioEngine.SAMPLE_RATE * AudioEngine.CHANNELS)
+            val widthBars = (durationMs.toFloat() / msPerBar).coerceAtLeast(1f).coerceAtMost((totalBars - recordStartBar).toFloat())
+            val waveform = audioEngine.generateWaveformFromRegion(pcm, AudioEngine.CHANNELS, 1f, widthBars, totalBars)
 
-        regionIdCounter++
-        updateTrack(armedTrackId) { track ->
-            val cleaned = track.regions.filter { it.name != "Recording..." }
-            track.copy(regions = cleaned + AudioRegion(regionIdCounter, "Recording.wav", recordStartBar, widthBars, waveform))
+            regionIdCounter++
+            updateTrack(armedTrackId) { track ->
+                val cleaned = track.regions.filter { it.name != "Recording..." }
+                track.copy(regions = cleaned + AudioRegion(regionIdCounter, "Recording.wav", recordStartBar, widthBars, waveform))
+            }
+            _project.value = _project.value.copy(isRecording = false, playheadPosition = recordStartBar)
+            _message.value = "Rekaman selesai (${audioEngine.getDurationMs()}ms)"
+            android.util.Log.e("SB", "finalizeRecording: OK, widthBars=$widthBars, startBar=$recordStartBar")
+        } catch (e: Exception) {
+            android.util.Log.e("SB", "finalizeRecording error: ${e.message}")
+            _project.value = _project.value.copy(isRecording = false)
         }
-        _project.value = _project.value.copy(playheadPosition = recordStartBar)
-        _message.value = "Rekaman selesai (${audioEngine.getDurationMs()}ms)"
     }
 
     fun togglePlayback() {

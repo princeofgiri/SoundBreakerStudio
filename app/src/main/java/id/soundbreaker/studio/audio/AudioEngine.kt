@@ -68,91 +68,118 @@ class AudioEngine {
     var onPlaybackFinished: (() -> Unit)? = null
     var onTrackAmplitudes: ((List<Float>) -> Unit)? = null
 
-    fun startRecording(outputFile: File, context: Context? = null, deviceName: String = "Mic") {
-        if (isRecording) return
+    fun startRecording(outputFile: File, context: Context? = null, deviceName: String = "Mic"): Boolean {
+        if (isRecording) return false
 
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG_IN, AUDIO_FORMAT)
-            .coerceAtLeast(SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS)
+        try {
+            val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG_IN, AUDIO_FORMAT)
+                .coerceAtLeast(SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS)
 
-        audioRecord = AudioRecord.Builder()
-            .setAudioSource(MediaRecorder.AudioSource.MIC)
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(CHANNEL_CONFIG_IN)
-                    .setEncoding(AUDIO_FORMAT)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .build()
+            audioRecord = AudioRecord.Builder()
+                .setAudioSource(MediaRecorder.AudioSource.MIC)
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(CHANNEL_CONFIG_IN)
+                        .setEncoding(AUDIO_FORMAT)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferSize)
+                .build()
 
-        // Route to specific device if not built-in mic
-        if (deviceName != "Mic" && context != null) {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-            for (device in devices) {
-                val name = device.productName?.toString() ?: continue
-                if (deviceName.contains(name)) {
-                    android.util.Log.e("SB", "Routing recording to device: $name (id=${device.id})")
-                    audioRecord?.setPreferredDevice(device)
-                    break
-                }
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                android.util.Log.e("SB", "AudioRecord NOT initialized, state=${audioRecord?.state}")
+                try { audioRecord?.release() } catch (_: Exception) {}
+                audioRecord = null
+                return false
             }
-        }
 
-        recordedBuffers.clear()
-        totalRecordedFrames = 0
-        isRecording = true
-
-        audioRecord?.startRecording()
-
-        recordJob = scope.launch {
-            val buffer = ShortArray(bufferSize / BYTES_PER_SAMPLE)
-            var chunkCount = 0
-
-            while (isActive && isRecording) {
-                val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
-                if (read > 0) {
-                    val copy = buffer.copyOf(read)
-                    recordedBuffers.add(copy)
-                    totalRecordedFrames += read / CHANNELS
-
-                    val maxAmplitude = copy.maxOfOrNull { Math.abs(it.toInt()) } ?: 0
-                    onAmplitude?.invoke(maxAmplitude / Short.MAX_VALUE.toFloat())
-
-                    chunkCount++
-                    if (chunkCount % 22 == 0 && onRecordingWaveform != null) {
-                        val pcm = mergeBuffers()
-                        if (pcm.isNotEmpty()) {
-                            val waveform = generateWaveformFromRegion(pcm, CHANNELS, 1f, 200f, 200, 200)
-                            onRecordingWaveform?.invoke(waveform)
-                        }
+            // Route to specific device if not built-in mic
+            if (deviceName != "Mic Internal" && context != null) {
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                for (device in devices) {
+                    val name = device.productName?.toString() ?: continue
+                    if (deviceName.contains(name)) {
+                        audioRecord?.setPreferredDevice(device)
+                        break
                     }
                 }
             }
 
-            // Final waveform update
-            if (onRecordingWaveform != null) {
-                val pcm = mergeBuffers()
-                if (pcm.isNotEmpty()) {
-                    val waveform = generateWaveformFromRegion(pcm, CHANNELS, 1f, 200f, 200, 200)
-                    onRecordingWaveform?.invoke(waveform)
+            recordedBuffers.clear()
+            totalRecordedFrames = 0
+            isRecording = true
+
+            audioRecord?.startRecording()
+
+            recordJob = scope.launch {
+                val buffer = ShortArray(bufferSize / BYTES_PER_SAMPLE)
+                var chunkCount = 0
+                var readErrors = 0
+
+                while (isActive && isRecording) {
+                    val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
+                    if (read > 0) {
+                        readErrors = 0
+                        val copy = buffer.copyOf(read)
+                        recordedBuffers.add(copy)
+                        totalRecordedFrames += read / CHANNELS
+
+                        val maxAmplitude = copy.maxOfOrNull { Math.abs(it.toInt()) } ?: 0
+                        onAmplitude?.invoke(maxAmplitude / Short.MAX_VALUE.toFloat())
+
+                        chunkCount++
+                        if (chunkCount % 22 == 0) {
+                            try {
+                                val pcm = mergeBuffers()
+                                if (pcm.isNotEmpty()) {
+                                    onRecordingWaveform?.invoke(generatePeaksFromPcm(pcm, 200))
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    } else {
+                        readErrors++
+                        if (readErrors > 50) {
+                            android.util.Log.e("SB", "AudioRecord read failed $readErrors times, stopping")
+                            break
+                        }
+                    }
                 }
+
+                try {
+                    val pcm = mergeBuffers()
+                    if (pcm.isNotEmpty()) {
+                        onRecordingWaveform?.invoke(generatePeaksFromPcm(pcm, 200))
+                    }
+                } catch (_: Exception) {}
+
+                try { audioRecord?.stop() } catch (_: Exception) {}
+                try { audioRecord?.release() } catch (_: Exception) {}
+                audioRecord = null
+                isRecording = false
+
+                val pcmData = mergeBuffers()
+                writeWavFile(pcmData, outputFile)
+                onRecordComplete?.invoke(outputFile)
             }
 
-            audioRecord?.stop()
-            audioRecord?.release()
+            return true
+        } catch (e: Exception) {
+            android.util.Log.e("SB", "startRecording FAILED: ${e.message}")
+            try { audioRecord?.release() } catch (_: Exception) {}
             audioRecord = null
             isRecording = false
-
-            val pcmData = mergeBuffers()
-            writeWavFile(pcmData, outputFile)
-            onRecordComplete?.invoke(outputFile)
+            return false
         }
     }
 
     fun stopRecording() {
         isRecording = false
+        try { audioRecord?.stop() } catch (_: Exception) {}
+        try { audioRecord?.release() } catch (_: Exception) {}
+        audioRecord = null
+        onRecordingWaveform = null
         recordJob?.cancel()
     }
 
@@ -1164,6 +1191,21 @@ class AudioEngine {
                     val amp = Math.abs(pcmData[sampleIdx].toInt()) / Short.MAX_VALUE.toFloat()
                     if (amp > max) max = amp
                 }
+            }
+            max
+        }
+    }
+
+    private fun generatePeaksFromPcm(pcm: ShortArray, numPoints: Int): FloatArray {
+        val totalSamples = pcm.size
+        val samplesPerPoint = (totalSamples / numPoints).coerceAtLeast(1)
+        return FloatArray(numPoints) { i ->
+            val start = i * samplesPerPoint
+            val end = minOf(start + samplesPerPoint, totalSamples)
+            var max = 0f
+            for (j in start until end) {
+                val amp = Math.abs(pcm[j].toInt()) / Short.MAX_VALUE.toFloat()
+                if (amp > max) max = amp
             }
             max
         }
